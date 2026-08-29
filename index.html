@@ -5,24 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>ЭХО · эксперимент №9</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   html,body{margin:0;height:100%;background:#040506;overflow:hidden;font-family:"IBM Plex Mono",monospace}
   #stage{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#000}
   canvas{position:absolute;left:0;top:0;width:100%;height:100%}
-  #game{image-rendering:pixelated;image-rendering:crisp-edges}
+  #game{image-rendering:pixelated}
   #fx{position:absolute;inset:0;pointer-events:none;z-index:5;
-      background:repeating-linear-gradient(0deg,rgba(0,0,0,.17) 0 1px,transparent 1px 3px)}
+      background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px)}
   #vig{position:absolute;inset:0;pointer-events:none;z-index:6;
-      background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.55) 100%)}
+      background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.5) 100%)}
   #touch{position:absolute;inset:0;z-index:7;display:none}
   .tb{position:absolute;border:1px solid rgba(255,180,110,.5);color:#ffb46b;border-radius:50%;
-      width:56px;height:56px;background:rgba(20,16,10,.4);display:flex;align-items:center;justify-content:center;
-      font-size:18px;user-select:none;-webkit-user-select:none;touch-action:none}
+      width:58px;height:58px;background:rgba(20,16,10,.4);display:flex;align-items:center;justify-content:center;
+      font-size:19px;user-select:none;-webkit-user-select:none;touch-action:none}
   .tb:active{background:rgba(255,180,110,.25)}
-  #tL{left:14px;bottom:20px}#tR{left:84px;bottom:20px}
-  #tJ{right:14px;bottom:20px;width:66px;height:66px}
-  #tE{right:96px;bottom:20px}#tQ{right:96px;bottom:96px;width:44px;height:44px;font-size:12px}
+  #tL{left:14px;bottom:22px}#tR{left:84px;bottom:22px}
+  #tJ{right:14px;bottom:22px;width:68px;height:68px}
+  #tE{right:96px;bottom:22px}#tQ{right:96px;bottom:92px;width:46px;height:46px;font-size:10px}
+  #tP{right:16px;top:14px;width:38px;height:38px;font-size:13px}
 </style>
 </head>
 <body>
@@ -32,54 +33,59 @@
   <div id="fx"></div><div id="vig"></div>
   <div id="touch">
     <div class="tb" id="tL">◄</div><div class="tb" id="tR">►</div>
-    <div class="tb" id="tJ">▲</div><div class="tb" id="tE">●</div><div class="tb" id="tQ">СБРОС</div>
+    <div class="tb" id="tJ">▲</div>
+    <div class="tb" id="tE">●</div>
+    <div class="tb" id="tQ">СБРОС</div><div class="tb" id="tP">II</div>
   </div>
 </div>
 <script>
 "use strict";
 /* ============================================================
    ЭХО — эксперимент №9 · НИИ «ПУЛЬСАР» · хронокамера К-7
-   Платформер-головоломка о записи темпоральных эхо.
    ============================================================ */
 
 // ---------- константы ----------
 const TS=16, VW=480, VH=270;
 const GRAV=.34, JUMPV=-5.9, MAXVX=1.75, ACC=.28, FRIC=.3, MAXFALL=6.5;
 const P_W=8, P_H=13;
-const PULSE_T=168;            // импульсная дверь: 2.8 с
-const REC_MAX=420;            // лимит записи (точек, 30/с)
+const PULSE_T=168;   // импульсный шлюз: ~2.8 с
+const REC_MAX=900;   // лимит записи: 30 секунд
 
 // ---------- утилиты ----------
 const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t;
 function hash(x,y){let h=(x*374761393+y*668265263)|0;h=(h^(h>>13))*1274126177|0;return ((h^(h>>16))>>>0)/4294967295;}
 const pad=(n,l)=>String(n).padStart(l,'0');
 
-// ---------- аудио (полностью процедурный синтез) ----------
-const SFX={ctx:null,master:null,on:true,humG:null,
+// ---------- аудио (процедурный синтез) ----------
+const SFX={ctx:null,master:null,on:true,
   init(){ if(this.ctx)return; try{
     const C=this.ctx=new (window.AudioContext||window.webkitAudioContext)();
     this.master=C.createGain(); this.master.gain.value=.55; this.master.connect(C.destination);
-    // фоновый гул завода
-    const g=this.humG=C.createGain(); g.gain.value=.05; g.connect(this.master);
+    const g=C.createGain(); g.gain.value=.05; g.connect(this.master);
     const lp=C.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=160; lp.connect(g);
-    [52,104.7].forEach((f,i)=>{const o=C.createOscillator();o.type=i?'triangle':'sawtooth';o.frequency.value=f;
+    [52,104.7].forEach(function(f,i){
+      const o=C.createOscillator();o.type=i?'triangle':'sawtooth';o.frequency.value=f;
       const og=C.createGain();og.gain.value=i?.25:.6;o.connect(og);og.connect(lp);o.start();});
-    const lfo=C.createOscillator();lfo.frequency.value=.11;const lg=C.createGain();lg.gain.value=.02;
+    const lfo=C.createOscillator();lfo.frequency.value=.11;
+    const lg=C.createGain();lg.gain.value=.02;
     lfo.connect(lg);lg.connect(g.gain);lfo.start();
-    // шум вентиляции
     const nb=C.createBuffer(1,C.sampleRate*2,C.sampleRate),d=nb.getChannelData(0);
     for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
     const ns=C.createBufferSource();ns.buffer=nb;ns.loop=true;
     const bp=C.createBiquadFilter();bp.type='bandpass';bp.frequency.value=280;bp.Q.value=.6;
     const ng=C.createGain();ng.gain.value=.014;ns.connect(bp);bp.connect(ng);ng.connect(this.master);ns.start();
   }catch(e){} },
-  t(f0,f1,dur,type,vol,delay=0){ if(!this.ctx||!this.on)return; const C=this.ctx,t0=C.currentTime+delay;
+  t(f0,f1,dur,type,vol,delay){ if(!this.ctx||!this.on)return;
+    const C=this.ctx,t0=C.currentTime+(delay||0);
     const o=C.createOscillator(),g=C.createGain();o.type=type||'square';
-    o.frequency.setValueAtTime(f0,t0); o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),t0+dur);
-    g.gain.setValueAtTime(vol,t0); g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
+    o.frequency.setValueAtTime(f0,t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),t0+dur);
+    g.gain.setValueAtTime(vol,t0);
+    g.gain.exponentialRampToValueAtTime(.0001,t0+dur);
     o.connect(g);g.connect(this.master);o.start(t0);o.stop(t0+dur+.02); },
-  n(dur,f,q,vol,delay=0){ if(!this.ctx||!this.on)return; const C=this.ctx,t0=C.currentTime+delay;
-    const b=C.createBuffer(1,C.sampleRate*dur,C.sampleRate),d=b.getChannelData(0);
+  n(dur,f,q,vol,delay){ if(!this.ctx||!this.on)return;
+    const C=this.ctx,t0=C.currentTime+(delay||0);
+    const b=C.createBuffer(1,Math.max(1,(C.sampleRate*dur)|0),C.sampleRate),d=b.getChannelData(0);
     for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*(1-i/d.length);
     const s=C.createBufferSource();s.buffer=b;
     const bp=C.createBiquadFilter();bp.type='bandpass';bp.frequency.value=f;bp.Q.value=q;
@@ -96,7 +102,7 @@ const SFX={ctx:null,master:null,on:true,humG:null,
   coil(){this.t(880,880,.09,'sine',.10);this.t(1318,1318,.14,'sine',.08,.07)},
   pulse(){this.t(660,660,.09,'square',.1);this.t(660,660,.09,'square',.1,.14);this.t(880,880,.2,'square',.1,.28)},
   death(){this.t(300,40,.5,'sawtooth',.16);this.n(.4,500,.5,.2)},
-  win(){[294,440,587].forEach((f,i)=>this.t(f,f,.22,'triangle',.12,i*.13))},
+  win(){[294,440,587].forEach(function(f,i){this.t(f,f,.22,'triangle',.12,i*.13)},this)},
   deny(){this.t(200,150,.12,'square',.08)}
 };
 
@@ -104,20 +110,24 @@ const SFX={ctx:null,master:null,on:true,humG:null,
 const Keys={},JP=new Set();
 const MAP={ArrowLeft:'L',KeyA:'L',ArrowRight:'R',KeyD:'R',ArrowUp:'J',KeyW:'J',Space:'J',
   KeyE:'E',KeyQ:'Q',KeyR:'RS',KeyM:'M',Escape:'ESC',Enter:'OK',ArrowDown:'D'};
-addEventListener('keydown',e=>{const k=MAP[e.code];if(k){if(!Keys[k])JP.add(k);Keys[k]=1;e.preventDefault();}SFX.init();});
-addEventListener('keyup',e=>{const k=MAP[e.code];if(k)Keys[k]=0;});
-addEventListener('blur',()=>{for(const k in Keys)Keys[k]=0;if(G.state==='play')G.paused=true;});
-// touch
+addEventListener('keydown',function(e){const k=MAP[e.code];
+  if(k){if(!Keys[k])JP.add(k);Keys[k]=1;e.preventDefault();}SFX.init();});
+addEventListener('keyup',function(e){const k=MAP[e.code];if(k)Keys[k]=0;});
+addEventListener('blur',function(){for(const k in Keys)Keys[k]=0;if(G.state==='play')G.paused=true;});
+
 const isTouch=('ontouchstart' in window);
 if(isTouch)document.getElementById('touch').style.display='block';
-[['tL','L'],['tR','R'],['tJ','J'],['tE','E'],['tQ','Q']].forEach(([id,k])=>{
-  const el=document.getElementById(id);
-  el.addEventListener('pointerdown',e=>{e.preventDefault();SFX.init();if(!Keys[k])JP.add(k);Keys[k]=1;});
-  el.addEventListener('pointerup',()=>Keys[k]=0);
-  el.addEventListener('pointerleave',()=>Keys[k]=0);
+[['tL','L'],['tR','R'],['tJ','J'],['tE','E'],['tQ','Q'],['tP','ESC']].forEach(function(pair){
+  const el=document.getElementById(pair[0]);
+  el.addEventListener('pointerdown',function(e){e.preventDefault();e.stopPropagation();SFX.init();
+    if(!Keys[pair[1]])JP.add(pair[1]);Keys[pair[1]]=1;});
+  el.addEventListener('pointerup',function(){Keys[pair[1]]=0;});
+  el.addEventListener('pointerleave',function(){Keys[pair[1]]=0;});
 });
-document.getElementById('stage').addEventListener('pointerdown',e=>{SFX.init();
-  if(G.state!=='play'&&!e.target.classList.contains('tb'))JP.add('OK');});
+document.getElementById('stage').addEventListener('pointerdown',function(e){
+  SFX.init();
+  if(!e.target.classList.contains('tb'))JP.add('OK');
+});
 
 // ---------- спрайт подопытного ----------
 const DUDE={
@@ -133,433 +143,397 @@ function drawDude(g,x,y,fr,face,pal,alpha){
   const sp=DUDE[fr]||DUDE.idle;
   for(let r=0;r<sp.length;r++)for(let c=0;c<8;c++){
     const ch=sp[r][c]; if(ch==='.')continue;
-    g.fillStyle=pal[ch]; g.fillRect(x+(face<0?7-c:c),y+r,1,1);
+    g.fillStyle=pal[ch];
+    g.fillRect(x+(face<0?7-c:c),y+r,1,1);
   }
   g.restore();
 }
 
+// ============================================================
+//        ПОСТРОИТЕЛЬ КАРТ (геометрия гарантируется кодом)
+// ============================================================
+function mkGrid(H,W){const m=[];for(let y=0;y<H;y++)m.push(new Array(W).fill('.'));return m;}
+function box(m,x0,y0,x1,y1,c){
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)
+    if(m[y]&&m[y][x]!==undefined)m[y][x]=c;}
+function frame(m){const H=m.length,W=m[0].length;
+  box(m,0,0,W-1,1,'#');box(m,0,H-1,W-1,H-1,'#');
+  box(m,0,0,0,H-1,'#');box(m,W-1,0,W-1,H-1,'#');}
+function join(m){return m.map(function(r){return r.join('')});}
+
+function mapL1(){const W=52,H=12,m=mkGrid(H,W);frame(m);
+  box(m,20,8,24,8,'#');
+  m[7][23]='o';m[8][27]='o';
+  m[10][30]='^';m[10][31]='^';
+  m[10][3]='P';m[10][41]='F';
+  return join(m);}
+
+function mapL2(){const W=56,H=12,m=mkGrid(H,W);frame(m);
+  box(m,20,6,20,10,'A');
+  m[10][10]='1';
+  m[10][25]='^';m[10][26]='^';m[8][25]='o';
+  box(m,37,8,41,8,'#');m[7][39]='o';
+  m[10][3]='P';m[10][48]='F';
+  return join(m);}
+
+function mapL3(){const W=64,H=12,m=mkGrid(H,W);frame(m);
+  box(m,18,6,18,10,'A');box(m,46,6,46,10,'B');
+  m[10][3]='P';m[10][8]='1';
+  m[10][23]='^';m[10][24]='^';m[10][27]='o';
+  box(m,28,8,32,8,'=');m[7][30]='2';
+  m[10][53]='o';m[10][57]='F';
+  return join(m);}
+
+function mapL4(){const W=36,H=31,m=mkGrid(H,W);frame(m);
+  box(m,1,5,10,5,'#');   m[4][3]='P'; m[4][6]='o';
+  box(m,11,9,22,9,'#');  m[8][16]='^';m[8][17]='^';m[8][20]='o';
+  box(m,16,13,34,13,'#');m[12][24]='o';
+  box(m,1,17,15,17,'#'); m[16][3]='o';
+  box(m,16,21,34,21,'#');m[20][20]='o';
+  box(m,20,30,21,30,'~');
+  m[29][26]='F';m[29][33]='o';
+  return join(m);}
+
+function mapL5(){const W=72,H=14,m=mkGrid(H,W);frame(m);
+  box(m,16,8,16,12,'A');box(m,60,8,60,12,'D');
+  m[12][3]='P';m[12][10]='1';m[12][44]='4';m[12][67]='F';
+  box(m,24,8,38,12,'@');
+  m[12][30]='^';m[12][31]='^';m[10][28]='o';m[10][5]='o';
+  m[12][52]='^';m[12][53]='^';
+  box(m,62,10,66,10,'=');m[9][64]='o';
+  return join(m);}
+
+function mapL6(){const W=72,H=14,m=mkGrid(H,W);frame(m);
+  box(m,14,8,14,12,'A');box(m,38,8,38,12,'B');box(m,56,8,56,12,'C');
+  m[12][3]='P';m[12][8]='1';m[12][20]='3';m[12][66]='F';
+  box(m,24,13,26,13,'~');
+  box(m,28,10,32,10,'=');m[9][30]='2';
+  m[10][25]='o';m[9][46]='o';m[12][62]='o';
+  m[12][46]='^';m[12][47]='^';
+  return join(m);}
+
+function mapL7(){const W=88,H=14,m=mkGrid(H,W);frame(m);
+  box(m,66,7,66,12,'D');
+  m[12][3]='P';m[12][8]='4';m[12][78]='F';
+  m[12][18]='^';m[12][19]='^';
+  box(m,26,10,30,10,'=');
+  box(m,26,12,30,12,'^');
+  m[12][36]='^';m[12][37]='^';
+  box(m,40,10,44,10,'=');m[9][42]='o';
+  m[12][50]='^';m[12][51]='^';m[12][52]='^';
+  m[10][59]='o';
+  return join(m);}
+
+function mapL8(){const W=44,H=31,m=mkGrid(H,W);frame(m);
+  box(m,1,9,24,9,'#');box(m,18,4,18,8,'A');
+  m[8][3]='P';m[8][8]='1';m[8][22]='o';
+  box(m,1,16,32,16,'#');box(m,28,5,28,15,'B');
+  m[15][25]='2';m[15][20]='o';
+  box(m,1,23,40,23,'#');box(m,38,18,38,22,'D');
+  m[22][12]='4';m[22][16]='o';m[22][20]='^';m[22][21]='^';
+  box(m,1,29,42,29,'#');box(m,26,29,27,29,'~');
+  m[28][6]='F';m[28][33]='o';
+  return join(m);}
+
+function mapL9(){const W=64,H=14,m=mkGrid(H,W);frame(m);
+  box(m,27,8,27,12,'A');
+  m[12][3]='P';m[12][20]='1';m[12][54]='F';
+  m[12][12]='^';m[12][13]='^';
+  box(m,32,13,34,13,'~');
+  m[12][40]='^';m[12][41]='^';
+  m[12][8]='o';m[10][24]='o';
+  box(m,44,10,48,10,'=');m[9][46]='o';
+  return join(m);}
+
+function mapL10(){const W=104,H=15,m=mkGrid(H,W);frame(m);
+  box(m,16,9,16,13,'A');box(m,48,9,48,13,'B');box(m,90,9,90,13,'D');
+  m[13][3]='P';m[13][10]='1';m[13][22]='2';m[13][62]='4';m[13][98]='F';
+  box(m,26,9,44,13,'@');
+  m[13][32]='^';m[13][33]='^';m[13][38]='^';m[13][39]='^';m[11][36]='o';
+  box(m,52,11,56,11,'=');m[10][54]='o';
+  m[13][70]='^';m[13][71]='^';
+  box(m,74,11,78,11,'=');m[10][76]='o';
+  m[13][82]='^';m[13][83]='^';
+  return join(m);}
+
 // ---------- данные уровней ----------
-// # стена  = решётка  ^ шипы  ~ кислота  P старт  F выход  o катушка
-// 1-3 плиты (каналы 1-3)  4 импульсная плита  A-D двери каналов 1-4
-// @ зона помех  * вертикальный лифт
 const LEVELS=[
-{ name:"КАЛИБРОВКА", sub:"СЕКТОР Б-1", date:"04.11.1986", echo:1, dark:false,
-  hint:"A/D ИЛИ СТРЕЛКИ — ДВИЖЕНИЕ   SPACE — ПРЫЖОК",
-  note:"День 41. Объект передвигается по сектору. Сведений о цели не имеется. Наблюдение продолжается.",
-  map:[
-  "####################################################",
-  "#..................................................#",
-  "#..................................................#",
-  "#..................................................#",
-  "#..................................................#",
-  "#..................................................#",
-  "#..................................................#",
-  "#......................o...........................#",
-  "#...................#####.o........................#",
-  "#..................................................#",
-  "#..P.......................^^..............F......#",
-  "#######...##########...########..###################"],
-  signs:[{x:3,y:6,t:"ДВИЖЕНИЕ: A · D"},{x:12,y:5,t:"ПРЫЖОК: SPACE"},{x:24,y:7,t:"НЕ НАСТУПАТЬ"}] },
-
-{ name:"ПЕРВЫЙ ОТКЛИК", sub:"СЕКТОР Б-2", date:"09.11.1986", echo:1, dark:false,
-  hint:"E — ЗАПИСЬ ЭХО: ВСТАНЬ НА ПЛИТУ, НАЖМИ E, ПОДОЖДИ, НАЖМИ E СНОВА",
-  note:"Объект впервые воспользовался хронокамерой. На плёнке — сам объект. Дважды. Комиссия затрудняется с ответом.",
-  map:[
-  '#'.repeat(56),
-  '#'.repeat(56),
-  "#....................#..................................#",
-  "#....................#..................................#",
-  "#....................#..................................#",
-  "#....................#..................................#",
-  "#....................A..................o...............#",
-  "#....................A.................#####............#",
-  "#....................A....o.............................#",
-  "#..P......1.........A....^^.....................F.......#",
-  '#'.repeat(56),
-  '#'.repeat(56)],
-  signs:[{x:5,y:5,t:"ЭХО ПРИВОДИТ МЕХАНИЗМЫ В ДЕЙСТВИЕ"},{x:22,y:6,t:"ШЛЮЗ-1"},{x:40,y:9,t:"ТИШЕ"}] },
-
-{ name:"ГАЛЬВАНИЧЕСКАЯ ЦЕПЬ", sub:"СЕКТОР Б-3", date:"16.11.1986", echo:2, dark:false,
-  hint:"ЭХО ОСТАЁТСЯ ТАМ, ГДЕ ЗАКОНЧИЛАСЬ ЗАПИСЬ   ·   Q — СТЕРЕТЬ ВСЕ ЭХО",
-  note:"Записи объекта начинают действовать синхронно с оригиналом. Инженер Петров отказывается дежурить дальше.",
-  map:[
-  '#'.repeat(64),
-  '#'.repeat(64),
-  "#..................#.......................#..................#",
-  "#..................#.......................#..................#",
-  "#..................#.......................#..................#",
-  "#..................#.......................#..................#",
-  "#..................#.......................#..................#",
-  "#.............1....A..........2...........B.......o..........#",
-  "#..................A..^^...................B....#####........#",
-  "#..................A..^^......o............B.............F..#",
-  '#'.repeat(64),
-  '#'.repeat(64)],
-  signs:[{x:4,y:6,t:"ЦЕПЬ: ЭХО-1 → ШЛЮЗ-1"},{x:24,y:6,t:"ЦЕПЬ: ЭХО-2 → ШЛЮЗ-2"},{x:50,y:9,t:"ОБЪЕКТ НЕ ОДИН"}] },
-
-{ name:"РЕАКТОРНАЯ ШАХТА", sub:"СЕКТОР Б-4", date:"21.11.1986", echo:1, dark:false,
-  hint:"СПУСК. КИСЛОТА НЕ ПРОЩАЕТ ОШИБОК",
-  note:"Объект спускается к реакторному залу. Уровень шума превышает норму. Уровень любопытства — тоже.",
-  map:[
-  '#'.repeat(36),
-  '#'.repeat(36),
-  "#..P...............................#",
-  "###########........................#",
-  "#..................................#",
-  "#....................o.............#",
-  "#.............#########............#",
-  "#..................................#",
-  "#..................................#",
-  "#..................................#",
-  "#############......................#",
-  "#..................................#",
-  "#..................................#",
-  "#...............................o..#",
-  "#..............................*###.#",
-  "#..................................#",
-  "#...................#########......#",
-  "#..................................#",
-  "#..................................#",
-  "#.............^^...................#",
-  "#.........#########................#",
-  "#..................................#",
-  "#..................................#",
-  "#..................................#",
-  "#.F................................#",
-  "######.##..................#########",
-  "#.....o....................#########",
-  "#....##.....................#########",
-  "#.............###########...#########",
-  "#.....~~~~~~~############...#########",
-  "#.....~~~~~~~############...#########",
-  '#'.repeat(36)],
-  signs:[{x:16,y:5,t:"ВНИЗ"},{x:6,y:22,t:"КИСЛОТА. НЕ КУПАТЬСЯ"},{x:26,y:23,t:"ВЫХОД →"}] },
-
-{ name:"ПОМЕХИ", sub:"СЕКТОР Б-5", date:"28.11.1986", echo:2, dark:false,
-  hint:"В ЗОНЕ ПОМЕХ ЗАПИСЬ НЕВОЗМОЖНА   ·   ЖЁЛТАЯ ПЛИТА — ИМПУЛЬС: ДВЕРЬ ОТКРЫТА 3 СЕК",
-  note:"В секторе зафиксированы помехи. Плёнка засвечена. Объект засвечен слегка.",
-  map:[
-  '#'.repeat(96),
-  '#'.repeat(96),
-  "#...................................#..............................#",
-  "#...................................#..............................#",
-  "#...................................#..1.........................#",
-  "#...................................#.......########............#",
-  "#...................................#.....................=......#",
-  "#...................................#......................=......#",
-  "#...................................#...........o................#",
-  "#...................................#...........===.............#",
-  "#..................................A...........@@@@@@..........#",
-  "#..................................A......@@@@@@@@@@@@@........#",
-  "#..................................A..@@@@@@@@@@@@@@@@@@@......#",
-  "#......1...........................A..@@^^@@@@@^^@@@@@@@@......#",
-  "#..P...............................A..@@^^@@@@@^^@@@@@@@@..^^..#",
-  '#'.repeat(96),
-  "#########################..####################################"],
-  signs:[{x:10,y:9,t:"ЗОНА ПОМЕХ · НЕ ЗАПИСЫВАЕТСЯ"},{x:50,y:8,t:"ВВЕРХ — К ГЕНЕРАТОРУ"},{x:78,y:9,t:"ЭХО ЖМИТ КНОПКУ — ЖДИ У ДВЕРИ"}] },
-
-{ name:"ДВОЙНОЙ СЛЕПОЙ ОПЫТ", sub:"СЕКТОР Б-6", date:"03.12.1986", echo:3, dark:false,
-  hint:"ТРИ ПЛИТЫ — ТРИ ШЛЮЗА. ПЛАНИРУЙ ПОРЯДОК ЗАПИСЕЙ",
-  note:"Двойной слепой опыт: объект и его записи действуют независимо. Результат — одинаков. Это беспокоит.",
-  map:[
-  '#'.repeat(76),
-  '#'.repeat(76),
-  "#..................#...............................#..........#",
-  "#..................#...............................#..........#",
-  "#..................#...............................#..........#",
-  "#..................#...............................#..........#",
-  "#..................#...............................#..........#",
-  "#..................#...............................#..........#",
-  "#..................#...............................#..........#",
-  "#..................#...............................#..........#",
-  "#..................#...............................#..........#",
-  "#..................#...............................#..........#",
-  "#..................A...............................B..........#",
-  "#..................A...............................B..........#",
-  "#..................A.............o.................B..........#",
-  "#..................A..........######...............B..........#",
-  "#....3.............A..~~~~##~~~~...................B....o.....#",
-  "#..P...............A..~~~~##~~~~..1......2.........B.#####..F.#",
-  '#'.repeat(76),
-  '#'.repeat(76)],
-  signs:[{x:2,y:7,t:"ШЛЮЗ-3 ОТКРЫВАЕТСЯ ПЛИТОЙ-3"},{x:26,y:11,t:"КИСЛОТА"},{x:40,y:10,t:"ПЛИТА-1 · ПЛИТА-2"},{x:58,y:11,t:"ШЛЮЗ-2"}] },
-
-{ name:"ИНТЕРФЕРЕНЦИЯ", sub:"СЕКТОР Б-7", date:"11.12.1986", echo:2, dark:false,
-  hint:"ЗАПИШИ ЭХО У ДВЕРИ: ОНО ПОБЕЖИТ ЖАТЬ ПЛИТУ — А ТЫ БЕГИ РЯДОМ, НАВСТРЕЧУ СЕБЕ",
-  note:"Двери сектора реагируют с задержкой. Объект — без задержки. Кто из них механизм?",
-  map:[
-  '#'.repeat(80),
-  '#'.repeat(80),
-  "#..............................................................#",
-  "#..............................................................#",
-  "#.....######...................................................#",
-  "#.....######...................................................#",
-  "#....4######...................................................#",
-  "#..............o..............................................#",
-  "#.............###...........===.....===......................#",
-  "#..........##...........===.....===....................==....#",
-  "#.........##.........===.....===..............................#",
-  "#....##..............^..^^^..^^^....^^....^^^..^^^....^.......#",
-  "#....##..........===.....===......===....===....===...........#",
-  "#..............o.....................................o....F...#",
-  "#..P..........##......^^....^^^....^^....^^^....^^............#",
-  '#'.repeat(80),
-  '#'.repeat(80)],
-  signs:[{x:4,y:3,t:"ГЕНЕРАТОР ИМПУЛЬСА"},{x:30,y:6,t:"ЭХО НАВСТРЕЧУ"},{x:60,y:8,t:"ШЛЮЗ-4 · 3 СЕК"}] },
-
-{ name:"КАСКАД", sub:"СЕКТОР Б-8", date:"18.12.1986", echo:3, dark:false,
-  hint:"КАЖДЫЙ ЭТАЖ — СВОЯ ЗАПИСЬ. ВНИЗ, ВСЕГДА ВНИЗ",
-  note:"Объект спускается всё глубже. Эхо возвращаются всё охотнее. Спускаются тоже.",
-  map:[
-  '#'.repeat(40),
-  '#'.repeat(40),
-  "#......................................#",
-  "#......................................#",
-  "#.................#....................#",
-  "#.................#....................#",
-  "#.................A....................#",
-  "#.................A....................#",
-  "#.................A....................#",
-  "#..o....1.........A....................#",
-  "#######################..##############",
-  "#.................#....................#",
-  "#.................B....................#",
-  "#.................B....................#",
-  "#.................B....................#",
-  "#..o....2.........B....................#",
-  "####################..#################",
-  "#.................#....................#",
-  "#.................D....................#",
-  "#.................D....................#",
-  "#.................D....................#",
-  "#.................D....................#",
-  "#######################..##############",
-  "#......................................#",
-  "#.F....................................#",
-  "######.##..................###########",
-  "#.....o....................###########",
-  "#....##.....................###########",
-  "#.............###########...###########",
-  "#.....~~~~~~~############...###########",
-  "#.....~~~~~~~############...###########",
-  '#'.repeat(40)],
-  signs:[{x:3,y:7,t:"ЭТАЖ 1"},{x:3,y:13,t:"ЭТАЖ 2"},{x:3,y:19,t:"ЭТАЖ 3 · ИМПУЛЬС"},{x:8,y:22,t:"РЕАКТОРНЫЙ ЗАЛ"}] },
-
-{ name:"ТИХИЙ ЭТАЖ", sub:"СЕКТОР Б-9", date:"24.12.1986", echo:1, dark:true,
-  hint:"ОСВЕЩЕНИЕ ОТКЛЮЧЕНО ЗА НЕУПЛАТУ. КАТУШКИ СВЕТЯТСЯ. ЭХО СВЕТЯТСЯ.",
-  note:"Освещение сектора отключено за неуплату. Объект светится самостоятельно. Экономия утверждена.",
-  map:[
-  '#'.repeat(64),
-  '#'.repeat(64),
-  "#..............................................................#",
-  "#..............................................................#",
-  "#..............................................................#",
-  "#........o......................................................#",
-  "#.......===..................................o................#",
-  "#...........................................===................#",
-  "#..............................................................#",
-  "#..............................................................#",
-  "#..............................................................#",
-  "#..P...........^^......1.................^^....~~~........F...#",
-  "##############################...##############################",
-  "##############################~~~##############################"],
-  signs:[{x:2,y:8,t:"ТИХО"},{x:30,y:8,t:"ЭХО-1"},{x:52,y:8,t:"ПОЧТИ ВСЁ"}] },
-
-{ name:"ЭХО", sub:"СЕКТОР Б-10", date:"31.12.1986", echo:3, dark:false, final:true,
-  hint:"ФИНАЛЬНАЯ КАЛИБРОВКА. ВСЕ МЕХАНИЗМЫ СЕКТОРА.",
-  note:"Финальное наблюдение. Запись совпала с оригиналом до последнего кадра. Гипотеза подтверждена.",
-  map:[
-  '#'.repeat(104),
-  '#'.repeat(104),
-  "#..................#........................#....................#",
-  "#..................#........................#....................#",
-  "#..................#........................#.....######........#",
-  "#..................#........................#....2######........#",
-  "#..................#........................#.....######...o....#",
-  "#..................#........................#....................#",
-  "#..................#........................#....######.........#",
-  "#..................#........................#....................#",
-  "#..................#........................#....................#",
-  "#....o.............#.....@@@@@@@@@@@@@@.....#....................#",
-  "#...===............#..4..@@@@@@@@@@@@@@.....#....................#",
-  "#..................#.....@@@@@^^@@@^@@@.....#.........o.........#",
-  "#..................#.....@@@@@^^@@@^@@@.....#........===........#",
-  "#..P....1..........A.....@@@@@^^@@@^@@@.....D.3....^^......F....#",
-  "################################################################",
-  "################################################################"],
-  signs:[{x:2,y:7,t:"ОТДЕЛ №7"},{x:22,y:8,t:"ПОМЕХИ"},{x:56,y:5,t:"НЕ ПРИСЛОНЯТЬСЯ К ПРОШЛОМУ"},{x:88,y:8,t:"ЗАЛ ЭХО →"}] }
+{name:'КАЛИБРОВКА',sub:'СЕКТОР Б-1',date:'04.11.1986',echo:1,dark:false,map:mapL1(),
+ hint:'A/D — ДВИЖЕНИЕ · SPACE — ПРЫЖОК',
+ note:'День 41. Объект передвигается по сектору самостоятельно. Цель перемещений не установлена. Наблюдение продолжается.',
+ signs:[{x:2,y:6,t:'ДВИЖЕНИЕ: A · D'},{x:9,y:4,t:'ПРЫЖОК: SPACE'},{x:26,y:7,t:'НЕ НАСТУПАТЬ'}]},
+{name:'ПЕРВЫЙ ОТКЛИК',sub:'СЕКТОР Б-2',date:'09.11.1986',echo:1,dark:false,map:mapL2(),
+ hint:'E — ЗАПИСЬ ЭХО · ВСТАНЬ НА ПЛИТУ, НАЖМИ E, ПОДОЖДИ, НАЖМИ E СНОВА — ЭХО ОСТАНЕТСЯ ДЕРЖАТЬ ПЛИТУ',
+ note:'Объект впервые воспользовался хронокамерой. На плёнке — сам объект. Дважды. Комиссия затрудняется с комментарием.',
+ signs:[{x:5,y:6,t:'ЭХО ДЕРЖИТ ПЛИТУ'},{x:19,y:4,t:'ШЛЮЗ-1'},{x:40,y:9,t:'ТИШЕ'}]},
+{name:'ГАЛЬВАНИЧЕСКАЯ ЦЕПЬ',sub:'СЕКТОР Б-3',date:'16.11.1986',echo:2,dark:false,map:mapL3(),
+ hint:'КАЖДОЕ ЭХО ДЕРЖИТ СВОЮ ПЛИТУ · Q — СТЕРЕТЬ ВСЕ ЭХО',
+ note:'Записи объекта действуют синхронно с оригиналом. Инженер Петров отказывается от дальнейших дежурств.',
+ signs:[{x:4,y:6,t:'ПЛИТА-1 → ШЛЮЗ-1'},{x:27,y:5,t:'ПЛИТА-2 НА РЕШЁТКЕ'},{x:45,y:6,t:'ШЛЮЗ-2'}]},
+{name:'РЕАКТОРНАЯ ШАХТА',sub:'СЕКТОР Б-4',date:'21.11.1986',echo:1,dark:false,map:mapL4(),
+ hint:'СПУСК · КИСЛОТА НЕ ПРОЩАЕТ ОШИБОК',
+ note:'Объект спускается к реакторному залу. Уровень шума превышает норму. Уровень любопытства — тоже.',
+ signs:[{x:4,y:3,t:'ВНИЗ'},{x:17,y:8,t:'НЕ ТОРОПИТЬСЯ'},{x:5,y:27,t:'КИСЛОТА. НЕ КУПАТЬСЯ'},{x:24,y:27,t:'ВЫХОД →'}]},
+{name:'ПОМЕХИ',sub:'СЕКТОР Б-5',date:'28.11.1986',echo:2,dark:false,map:mapL5(),
+ hint:'ПОМЕХИ СРЫВАЮТ ЗАПИСЬ И УНИЧТОЖАЮТ ЭХО · ЖЁЛТАЯ ПЛИТА — ИМПУЛЬС: ШЛЮЗ ОТКРЫТ 3 СЕК',
+ note:'В секторе зафиксированы помехи. Плёнка засвечена. Объект засвечен слегка.',
+ signs:[{x:5,y:6,t:'ПОМЕХИ РВУТ ЗАПИСЬ'},{x:27,y:6,t:'ЗОНА ПОМЕХ'},{x:42,y:9,t:'ИМПУЛЬС · 3 СЕК'}]},
+{name:'ДВОЙНОЙ СЛЕПОЙ ОПЫТ',sub:'СЕКТОР Б-6',date:'03.12.1986',echo:3,dark:false,map:mapL6(),
+ hint:'ТРИ ПЛИТЫ — ТРИ ШЛЮЗА · ПЛАНИРУЙ ПОРЯДОК ЗАПИСЕЙ',
+ note:'Двойной слепой опыт: объект и его записи действуют независимо. Результат — одинаков. Это беспокоит.',
+ signs:[{x:4,y:6,t:'ПЛИТА-3 ЗА ШЛЮЗОМ-1'},{x:27,y:5,t:'ВВЕРХ — ПЛИТА-2'},{x:47,y:6,t:'ОБЪЕКТ НЕ ОДИН'}]},
+{name:'ИНТЕРФЕРЕНЦИЯ',sub:'СЕКТОР Б-7',date:'11.12.1986',echo:2,dark:false,map:mapL7(),
+ hint:'ЗАПИШИ ВЕСЬ ПУТЬ ОТ ЖЁЛТОЙ ПЛИТЫ ДО ШЛЮЗА · ОСТАНОВИВ ЗАПИСЬ У ШЛЮЗА — ТЫ БУДЕШЬ РЯДОМ, КОГДА ЭХО НАЖМЁТ ПЛИТУ',
+ note:'Шлюз-4 реагирует с задержкой. Объект — без задержки. Кто из них механизм, отчёт не уточняет.',
+ signs:[{x:4,y:6,t:'ЗАПИШИ ПУТЬ ДО ШЛЮЗА'},{x:34,y:5,t:'НЕ ОСТАНАВЛИВАЙСЯ'},{x:63,y:5,t:'ШЛЮЗ-4 · 3 СЕК'}]},
+{name:'КАСКАД',sub:'СЕКТОР Б-8',date:'18.12.1986',echo:3,dark:false,map:mapL8(),
+ hint:'ТРИ ЭТАЖА ВНИЗ · ПЕРВЫЕ ДВА ДЕРЖАТ ЭХО · ТРЕТИЙ — ИМПУЛЬС',
+ note:'Объект спускается всё глубже. Эхо возвращаются всё охотнее. Спускаются тоже.',
+ signs:[{x:3,y:6,t:'ЭТАЖ 1'},{x:2,y:13,t:'ЭТАЖ 2'},{x:9,y:20,t:'ЭТАЖ 3 · ИМПУЛЬС'},{x:5,y:27,t:'РЕАКТОРНЫЙ ЗАЛ'}]},
+{name:'ТИХИЙ ЭТАЖ',sub:'СЕКТОР Б-9',date:'24.12.1986',echo:1,dark:true,map:mapL9(),
+ hint:'ОСВЕЩЕНИЕ ОТКЛЮЧЕНО · СВЕТЯТСЯ КАТУШКИ, ШЛЮЗЫ И ТЫ',
+ note:'Освещение сектора отключено за неуплату. Объект светится самостоятельно. Экономия утверждена.',
+ signs:[{x:2,y:8,t:'ТИХО'},{x:19,y:8,t:'ПЛИТА-1'},{x:46,y:8,t:'ПОЧТИ ВСЁ'}]},
+{name:'ЭХО',sub:'СЕКТОР Б-10',date:'31.12.1986',echo:3,dark:false,map:mapL10(),final:true,
+ hint:'ФИНАЛЬНАЯ КАЛИБРОВКА · ВСЕ МЕХАНИЗМЫ СЕКТОРА',
+ note:'Финальное наблюдение. Запись совпала с оригиналом до последнего кадра. Гипотеза подтверждена.',
+ signs:[{x:2,y:7,t:'ОТДЕЛ №7'},{x:30,y:6,t:'ПОМЕХИ'},{x:56,y:7,t:'НЕ ПРИСЛОНЯТЬСЯ К ПРОШЛОМУ'},{x:91,y:7,t:'ЗАЛ ЭХО →'}]}
 ];
+const TOTAL_COILS=LEVELS.reduce(function(a,l){return a+l.map.join('').split('o').length-1;},0);
 
-// ---------- парсинг уровня ----------
-const G={state:'title',lvlIdx:0,sel:0,t:0,lt:0,deaths:0,playT:0,paused:false,
-  save:null,lvl:null,echoes:[],parts:[],dust:[],msg:null,msgT:0,
-  wipe:0,wipeDir:0,shake:0,glitch:0,winT:0,finalText:'',finalShown:0};
-try{G.save=JSON.parse(localStorage.getItem('echo9')||'{"unlocked":0,"coils":[],"deaths":0,"time":0}');}catch(e){G.save={unlocked:0,coils:[],deaths":0]};}
-if(!G.save.coils)G.save.coils=[];
+// ---------- глобальное состояние ----------
+const G={state:'title',lvlIdx:0,sel:0,t:0,lt:0,deaths:0,paused:false,
+  save:null,lvl:null,echoes:[],parts:[],msg:null,msgT:0,
+  wipe:0,wipeDir:0,shake:0,glitch:0,winT:0,finalShown:0,player:null,rec:null,cam:{x:0,y:0}};
+(function(){
+  let s=null;
+  try{s=JSON.parse(localStorage.getItem('echo9')||'null');}catch(e){s=null;}
+  if(!s||typeof s!=='object')s={};
+  if(typeof s.unlocked!=='number')s.unlocked=0;
+  if(!Array.isArray(s.coils))s.coils=[];
+  while(s.coils.length<LEVELS.length)s.coils.push(0);
+  if(typeof s.deaths!=='number')s.deaths=0;
+  if(typeof s.time!=='number')s.time=0;
+  G.save=s;
+})();
 
+// ---------- загрузка уровня ----------
 function loadLevel(i){
   const def=LEVELS[i];
-  const rows=def.map.map(r=>r);
-  const H=rows.length, W=Math.max(...rows.map(r=>r.length));
-  const grid=rows.map(r=>r.padEnd(W,'.'));
-  const L={def,W,H,grid,doors:[],plates:[],coils:[],spikes:[],acid:[],noise:[],
+  const rows=def.map;
+  const H=rows.length,W=rows[0].length;
+  const grid=rows.map(function(r){return r.padEnd(W,'#');});
+  const L={def:def,W:W,H:H,grid:grid,doors:[],plates:[],coils:[],spikes:[],acid:[],noise:[],
     platforms:[],lamps:[],echoLimit:def.echo,dark:!!def.dark,ch4t:0,
-    spawn:{x:32,y:32},exit:null,coilsGot:0,totalCoils:0,doorCh:{}};
-  // двери: вертикальные группы
+    spawn:{x:32,y:32},exit:null,coilsGot:0,totalCoils:0};
   for(let x=0;x<W;x++){let y=0;
-    while(y<H){ const ch=grid[y][x];
-      if('ABCD'.includes(ch)){ let y0=y; while(y<H&&grid[y][x]===ch)y++;
-        L.doors.push({ch:ch.charCodeAt(0)-64,x,y0,y1:y-1,open:0,closing:false,prevOpen:0});
+    while(y<H){const ch=grid[y][x];
+      if(ch==='A'||ch==='B'||ch==='C'||ch==='D'){
+        let y0=y;const ch2=ch;
+        while(y<H&&grid[y][x]===ch2)y++;
+        L.doors.push({ch:ch2.charCodeAt(0)-64,x:x,y0:y0,y1:y-1,open:0,prevOpen:0,closing:false});
       } else y++;
     }}
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){const ch=grid[y][x];
-    if('1234'.includes(ch))L.plates.push({ch:+ch,x,y,press:0,wasP:0,anim:0});
-    else if(ch==='o'){L.coils.push({x,y,taken:false,ph:hash(x,y)*7});L.totalCoils++;}
-    else if(ch==='^')L.spikes.push({x,y});
-    else if(ch==='~')L.acid.push({x,y,top:!(y>0&&grid[y-1][x]==='~')});
-    else if(ch==='@')L.noise.push({x,y});
+    if(ch>='1'&&ch<='4')L.plates.push({ch:+ch,x:x,y:y,press:0,wasP:0,anim:0});
+    else if(ch==='o'){L.coils.push({x:x,y:y,taken:false,ph:hash(x,y)*7});L.totalCoils++;}
+    else if(ch==='^')L.spikes.push({x:x,y:y});
+    else if(ch==='~')L.acid.push({x:x,y:y,top:!(y>0&&grid[y-1][x]==='~')});
+    else if(ch==='@')L.noise.push({x:x,y:y});
     else if(ch==='P')L.spawn={x:x*TS+4,y:y*TS+TS-P_H};
-    else if(ch==='F')L.exit={x,y};
+    else if(ch==='F')L.exit={x:x,y:y};
     else if(ch==='*')L.platforms.push({cx:x,cy:y,w:TS*3,h:8,ph:hash(x,y)*6.28,
       py:y*TS,ppy:y*TS,dx:0,dy:0,rope:0});
   }
-  // трос лифта: до потолка
-  L.platforms.forEach(p=>{let y=p.cy;while(y>0&&grid[y-1][p.cx]!=='#')y--;p.rope=(p.cy-y)*TS;});
-  // лампы: каждые N колонок — над полом
-  const step=def.dark?13:6;
-  for(let x=3;x<W;x+=step+((hash(x,7)*3)|0)){
-    let fl=-1;for(let y=H-1;y>=2;y--){const c=grid[y][x],u=grid[y-1][x];
-      if(c!=='.'&&!'ABCD1234oP*F@^~='.includes(c)&&u==='.'){fl=y;break;}
-      if(c==='~'||c==='^')break; if(c!=='.'&&u!=='.')break;}
-    if(fl>0){const ly=Math.max(1,fl-6);
-      L.lamps.push({x:x*TS+8,y:ly*TS,red:def.dark&&hash(x,99)>.55,seed:hash(x,3)});}
+  L.platforms.forEach(function(p){
+    let y=p.cy;
+    while(y>0&&grid[y-1][p.cx]!=='#')y--;
+    p.rope=(p.cy-y)*TS;});
+  // лампы: над каждым полом колонки (снизу вверх, с интервалом)
+  const lstep=def.dark?13:6;
+  for(let x=3;x<W-2;x+=lstep+((hash(x,7)*3)|0)){
+    let last=1e9;
+    for(let y=H-1;y>=8;y--){
+      if(grid[y][x]==='#'&&grid[y-1][x]!=='#'&&last-y>=9){
+        L.lamps.push({x:x*TS+8,y:(y-6)*TS,red:!!def.dark&&hash(x*3,y)>.55,seed:hash(x,y)});
+        last=y;
+      }
+    }
   }
-  G.lvl=L; G.echoes=[]; G.parts=[]; G.lt=0; G.winT=0;
+  G.lvl=L;G.echoes=[];G.parts=[];G.lt=0;G.winT=0;G.msgT=0;G.msg=null;G.paused=false;
   G.player={x:L.spawn.x,y:L.spawn.y,vx:0,vy:0,face:1,ground:false,coyote:0,jbuf:0,
     animT:0,onPlat:null,dead:false,deadT:0,stepT:0};
   G.rec={active:false,frames:[],tick:0,beep:0};
-  G.cam={x:0,y:0}; L.ch4t=0;
-  buildCache(); makeDust();
-  msg(def.hint,360);
+  G.cam={x:clamp(L.spawn.x-VW/2,0,Math.max(0,L.W*TS-VW)),y:camY(L.spawn.y)};
+  buildCache();
+  msg(def.hint,420);
 }
-function solidT(tx,ty){ const L=G.lvl;
-  if(tx<0||tx>=L.W)return '#';
-  if(ty<0)return '#'; if(ty>=L.H)return '.';
-  const c=L.grid[ty][tx]; return c==='#'?c:'.'; }
-const isSolidPx=(px,py)=>solidT(Math.floor(px/TS),Math.floor(py/TS))==='#';
+function msg(t,d){G.msg=t;G.msgT=d;}
+function camY(py){const worldH=G.lvl.H*TS;
+  if(worldH<=VH)return -(VH-worldH)/2;
+  return clamp(py-VH*.55,0,worldH-VH);}
 
 // ---------- физика ----------
+function solidT(tx,ty){const L=G.lvl;
+  if(tx<0||tx>=L.W)return '#';
+  if(ty<0)return '#';
+  if(ty>=L.H)return '.';
+  return L.grid[ty][tx]==='#'?'#':'.';}
+
+const overlap=function(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;};
+function doorRect(d){const full=(d.y1-d.y0+1)*TS,h=full*(1-d.open);
+  return {x:d.x*TS+3,y:(d.y1+1)*TS-h,w:10,h:h};}
+
 function tileCollide(e){
-  // ось X
+  const L=G.lvl;
   e.x+=e.vx;
   let y0=Math.floor(e.y/TS),y1=Math.floor((e.y+e.h-1)/TS);
   if(e.vx>0){const tx=Math.floor((e.x+e.w)/TS);
     for(let ty=y0;ty<=y1;ty++)if(solidT(tx,ty)==='#'){e.x=tx*TS-e.w-0.01;e.vx=0;break;}}
   else if(e.vx<0){const tx=Math.floor(e.x/TS);
     for(let ty=y0;ty<=y1;ty++)if(solidT(tx,ty)==='#'){e.x=(tx+1)*TS+0.01;e.vx=0;break;}}
-  // двери по X
-  for(const d of G.lvl.doors){const r=doorRect(d);
-    if(overlap(e,r)){ if(e.vx>0)e.x=r.x-e.w-0.01; else if(e.vx<0)e.x=r.x+r.w+0.01; e.vx=0; }}
-  // ось Y
+  for(const d of L.doors){const r=doorRect(d);
+    if(r.h>0&&overlap(e,r)){
+      if(e.vx>0)e.x=r.x-e.w-0.01; else if(e.vx<0)e.x=r.x+r.w+0.01;
+      e.vx=0;}}
   const prevB=e.y+e.h;
   e.y+=e.vy; e.ground=false; e.onPlat=null;
   const x0=Math.floor((e.x+1)/TS),x1=Math.floor((e.x+e.w-1)/TS);
   if(e.vy>0){const ty=Math.floor((e.y+e.h)/TS);
     for(let tx=x0;tx<=x1;tx++){
-      if(solidT(tx,ty)==='#'|| (prevB<=ty*TS+0.01 && G.lvl.grid[ty] && G.lvl.grid[ty][tx]==='=')){
+      const g=(ty>=0&&ty<L.H)?L.grid[ty][tx]:null;
+      if(solidT(tx,ty)==='#'||(prevB<=ty*TS+0.01&&g==='=')){
         e.y=ty*TS-e.h; e.vy=0; e.ground=true; break; }}}
   else if(e.vy<0){const ty=Math.floor(e.y/TS);
     for(let tx=x0;tx<=x1;tx++)if(solidT(tx,ty)==='#'){e.y=(ty+1)*TS+0.01;e.vy=0;break;}}
-  // двери по Y
-  for(const d of G.lvl.doors){const r=doorRect(d);
-    if(overlap(e,r)){ if(e.vy>=0 && e.y+e.h/2<r.y+r.h/2){e.y=r.y-e.h;e.vy=0;e.ground=true;}
-      else {e.y=r.y+r.h+0.01;e.vy=0;} }}
-  // платформы (сверху)
-  if(e.vy>=0)for(const p of G.lvl.platforms){
+  for(const d of L.doors){const r=doorRect(d);
+    if(r.h>0&&overlap(e,r)){
+      if(e.vy>=0&&e.y+e.h/2<r.y+r.h/2){e.y=r.y-e.h;e.vy=0;e.ground=true;}
+      else{e.y=r.y+r.h+0.01;e.vy=Math.max(0,e.vy);}}}
+  if(e.vy>=0)for(const p of L.platforms){
     const top=p.py;
-    if(e.x+e.w>p.cx*TS-p.w/2 && e.x<p.cx*TS+p.w/2 &&
-       prevB<=top+2.5 && e.y+e.h>=top){ e.y=top-e.h;e.vy=0;e.ground=true;e.onPlat=p; }}
+    if(e.x+e.w>p.cx*TS-p.w/2&&e.x<p.cx*TS+p.w/2&&
+       prevB<=top+2.5&&e.y+e.h>=top){
+      e.y=top-e.h;e.vy=0;e.ground=true;e.onPlat=p;}}
 }
-const overlap=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
-function doorRect(d){const full=(d.y1-d.y0+1)*TS,h=full*(1-d.open);
-  return {x:d.x*TS+3,y:(d.y1+1)*TS-h,w:10,h};}
+
+// ---------- помехи ----------
+function entNoise(x,y,w,h){const L=G.lvl;
+  const pts=[[x+1,y+3],[x+w-1,y+3],[x+1,y+h-1],[x+w-1,y+h-1]];
+  for(let i=0;i<pts.length;i++){
+    const tx=Math.floor(pts[i][0]/TS),ty=Math.floor(pts[i][1]/TS);
+    if(ty>=0&&ty<L.H&&tx>=0&&tx<L.W&&L.grid[ty][tx]==='@')return true;}
+  return false;}
 
 // ---------- запись и эхо ----------
 function startRec(){
   const P=G.player,L=G.lvl;
   if(G.echoes.length>=L.echoLimit){msg('КАНАЛЫ ЭХО ЗАНЯТЫ · Q — ОЧИСТИТЬ',150);SFX.deny();return;}
-  if(inNoise(P)){msg('ПОМЕХИ: ЗАПИСЬ НЕВОЗМОЖНА',150);SFX.deny();return;}
+  if(entNoise(P.x,P.y,P_W,P_H)){msg('ПОМЕХИ: ЗДЕСЬ НЕ ЗАПИСЫВАЕТСЯ',150);SFX.deny();return;}
   G.rec={active:true,frames:[],tick:0,beep:0}; SFX.recOn();
 }
 function stopRec(cancel){
   const R=G.rec;
   if(R.active&&R.frames.length>10&&!cancel){
     const f=R.frames;
-    G.echoes.push({frames:f,t:0,playing:true,frozen:false,dieT:0,x:f[0].x,y:f[0].y,
-      face:f[0].fc,fr:'idle'});
+    G.echoes.push({frames:f,t:0,playing:true,frozen:false,dieT:0,
+      x:f[0].x,y:f[0].y,face:f[0].fc,fr:'idle'});
     SFX.echo(); burst(f[0].x+4,f[0].y+6,'#7df3e8',18);
-    msg('ЭХО ЗАПИСАНО · КАНАЛ '+(G.echoes.length),120);
+    msg('ЭХО ЗАПИСАНО · КАНАЛ '+G.echoes.length,120);
   }
   G.rec={active:false,frames:[],tick:0,beep:0};
 }
-function inNoise(e){const L=G.lvl;
-  const pts=[[e.x+1,e.y+3],[e.x+e.w-1,e.y+3],[e.x+1,e.y+e.h-1],[e.x+e.w-1,e.y+e.h-1]];
-  return pts.some(([px,py])=>{const tx=Math.floor(px/TS),ty=Math.floor(py/TS);
-    return ty>=0&&ty<L.H&&tx>=0&&tx<L.W&&L.grid[ty][tx]==='@';});}
-
+function clearEchoes(){
+  if(!G.echoes.length&&!G.rec.active)return;
+  for(const e of G.echoes)if(!e.dieT){e.dieT=1;burst(e.x+4,e.y+6,'#7df3e8',14);}
+  if(G.rec.active)stopRec(true);
+  SFX.echoDie(); msg('ЭХО СТЁРТЫ',100);
+}
 function stepEchoes(){
   const L=G.lvl;
-  for(const e of G.echoes){ if(e.dieT)continue;
-    if(e.playing){ e.t+=0.5;
+  for(const e of G.echoes){
+    if(e.dieT){e.dieT++;continue;}
+    if(e.playing){
+      e.t+=0.5;
       const i=Math.floor(e.t),f=e.t-i;
       const a=e.frames[i],b=e.frames[Math.min(i+1,e.frames.length-1)];
-      e.x=lerp(a.x,b.x,f); e.y=lerp(a.y,b.y,f); e.face=b.fc; e.fr=b.fr;
+      if(a&&b){e.x=lerp(a.x,b.x,f);e.y=lerp(a.y,b.y,f);e.face=b.fc;e.fr=b.fr;}
       if(G.lt%3===0)G.parts.push({x:e.x+4,y:e.y+6,vx:(Math.random()-.5)*.3,vy:-.15,life:22,c:'#7df3e8',s:1,g:0});
       if(e.t>=e.frames.length-1){e.playing=false;e.frozen=true;}
     }
-    // гибель эхо: шипы, кислота, дверь
-    const box={x:e.x,y:e.y,w:P_W,h:P_H};
+    if(entNoise(e.x,e.y,P_W,P_H)){echoDie(e);continue;}
+    const bx={x:e.x,y:e.y,w:P_W,h:P_H};
     if(G.lt%4===0){
-      for(const s of L.spikes)if(overlap(box,{x:s.x*TS+2,y:s.y*TS+6,w:12,h:10})){echoDie(e);break;}
-      const cx=e.x+4,cy=e.y+e.h-2,tx=Math.floor(cx/TS),ty=Math.floor(cy/TS);
-      if(ty>=0&&ty<L.H&&tx>=0&&tx<L.W&&L.grid[ty][tx]==='~')echoDie(e);
+      let dead=false;
+      for(const s of L.spikes){if(overlap(bx,{x:s.x*TS+2,y:s.y*TS+6,w:12,h:10})){dead=true;break;}}
+      if(!dead){
+        const tx=Math.floor((e.x+4)/TS),ty=Math.floor((e.y+P_H-2)/TS);
+        if(ty>=0&&ty<L.H&&tx>=0&&tx<L.W&&L.grid[ty][tx]==='~')dead=true;
+      }
+      if(dead){echoDie(e);continue;}
     }
-    for(const d of L.doors){const r=doorRect(d);
-      if(d.closing&&overlap(box,r)){echoDie(e);break;}}
+    for(const d of L.doors){if(d.closing&&overlap(bx,doorRect(d))){echoDie(e);break;}}
   }
-  G.echoes=G.echoes.filter(e=>!e.dieT||e.dieT<22);
-  for(const e of G.echoes)if(e.dieT)e.dieT++;
+  G.echoes=G.echoes.filter(function(e){return !e.dieT||e.dieT<22;});
 }
 function echoDie(e){ if(e.dieT)return; e.dieT=1; SFX.echoDie(); burst(e.x+4,e.y+6,'#7df3e8',26); }
-function clearEchoes(){ if(!G.echoes.length&&!G.rec.active)return;
-  G.echoes.forEach(e=>{if(!e.dieT){e.dieT=1;burst(e.x+4,e.y+6,'#7df3e8',14);}});
-  if(G.rec.active)stopRec(true);
-  SFX.echoDie(); msg('ЭХО СТЁРТЫ',100); }
+function burst(x,y,c,n){
+  for(let i=0;i<n;i++){const a=Math.random()*6.28,v=.5+Math.random()*1.5;
+    G.parts.push({x:x,y:y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.4,life:20+Math.random()*25,c:c,s:Math.random()<.4?2:1,g:.03});}}
 
-// ---------- шаг игры ----------
+// ---------- главный шаг ----------
 function step(){
   G.t++;
-  if(G.state==='play'&&!G.paused){
-    G.playT++; G.lt++;
-    stepPlay();
-  } else if(G.state==='wipe'){ G.wipe+=G.wipeDir*0.045;
+  // шторка-шлюз (общая для всех состояний)
+  if(G.wipeDir!==0){
+    G.wipe+=G.wipeDir*0.045;
     if(G.wipeDir>0&&G.wipe>=1){G.wipe=1;G.wipeDir=0;afterWipe();}
-    else if(G.wipeDir<0&&G.wipe<=0){G.wipe=0;G.wipeDir=0;}
+    else if(G.wipeDir<0&&G.wipe<=0){
+      G.wipe=0;G.wipeDir=0;
+      if(G.state==='wipe')G.state='play';
+    }
+  }
+  if(G.state==='play'){
+    if(G.paused){
+      if(JP.has('ESC')||JP.has('OK'))G.paused=false;
+    } else { G.lt++; stepPlay(); }
+  }
+  else if(G.state==='title'){
+    const n=(G.save.unlocked||0)+1;
+    if(JP.has('L')){G.sel=(G.sel+n-1)%n;SFX.recBeep();}
+    if(JP.has('R')){G.sel=(G.sel+1)%n;SFX.recBeep();}
+    if(JP.has('OK')&&G.wipe===0){G.lvlIdx=G.sel;G.state='brief';SFX.plate();}
+  }
+  else if(G.state==='brief'){
+    if(JP.has('OK')&&G.wipe<0.3){
+      loadLevel(G.lvlIdx);G.state='wipe';G.wipe=1;G.wipeDir=-1;SFX.door(true);
+    }
+  }
+  else if(G.state==='final'){
+    G.finalShown++;
+    const full='ОБЪЕКТ ВСЕГДА БЫЛ ЭХО.';
+    const shown=Math.min(full.length,Math.floor(G.finalShown/6));
+    if(G.finalShown%6===0&&shown>0&&shown<full.length)SFX.recBeep();
+    if(shown>=full.length&&JP.has('OK')&&G.wipe===0){
+      G.state='title';G.sel=0;SFX.n(.5,200,.8,.2);
+    }
   }
   stepParts();
-  JPclear();
+  JP.clear();
 }
-function JPclear(){JP.clear();}
 
 function stepPlay(){
   const L=G.lvl,P=G.player;
   if(P.dead){ P.deadT++;
-    if(P.deadT>80){P.dead=false;P.x=L.spawn.x;P.y=L.spawn.y;P.vx=P.vy=0;
+    if(P.deadT>80){P.dead=false;P.x=L.spawn.x;P.y=L.spawn.y;P.vx=0;P.vy=0;
       G.cam.x=clamp(P.x-VW/2,0,Math.max(0,L.W*TS-VW));
-      G.cam.y=camY(P.y);} return; }
+      G.cam.y=camY(P.y);}
+    return; }
   if(G.winT){ G.winT++;
     if(G.winT===10)SFX.win();
-    if(G.winT>62)startWipe(); return; }
+    if(G.winT>62)startWipe();
+    return; }
+  if(JP.has('ESC')){G.paused=true;return;}
   // движение
   const dir=(Keys.R?1:0)-(Keys.L?1:0);
   if(dir!==0){P.vx=clamp(P.vx+dir*ACC,-MAXVX,MAXVX);P.face=dir;}
@@ -569,7 +543,12 @@ function stepPlay(){
   if(P.jbuf>0&&P.coyote>0){P.vy=JUMPV;P.coyote=0;P.jbuf=0;SFX.jump();}
   if(!Keys.J&&P.vy<-2)P.vy=-2;
   P.vy=Math.min(P.vy+GRAV,MAXFALL);
-  // перенос платформой
+  // движущиеся платформы
+  for(const p of L.platforms){
+    p.ppy=p.py;
+    p.py=p.cy*TS+Math.sin(G.lt*0.02+p.ph)*TS*3;
+    p.dy=p.py-p.ppy; p.dx=0;
+  }
   if(P.onPlat){const p=P.onPlat;
     if(P.x+P.w>p.cx*TS-p.w/2&&P.x<p.cx*TS+p.w/2&&Math.abs(P.y+P.h-p.py)<4){
       P.x+=p.dx;P.y+=p.dy;} else P.onPlat=null;}
@@ -577,111 +556,109 @@ function stepPlay(){
   tileCollide(P);
   if(P.ground&&!wasG&&wasVy>2.5){SFX.land();G.shake=Math.min(3,wasVy*.5);
     for(let i=0;i<5;i++)G.parts.push({x:P.x+Math.random()*8,y:P.y+P_H,vx:(Math.random()-.5),vy:-Math.random()*.5,life:14,c:'#8a8578',s:1,g:.02});}
-  // шаги
   if(P.ground&&Math.abs(P.vx)>.6){P.stepT++;if(P.stepT>13){P.stepT=0;SFX.step();}}
-  // анимация
   P.animT+=Math.abs(P.vx);
-  // границы и бездна
-  if(P.y>L.H*TS+80)killPlayer();
-  // запись
+  if(P.y>L.H*TS+80){killPlayer();return;}
+  // клавиши
   if(JP.has('E')){ if(!G.rec.active)startRec(); else stopRec(false); }
   if(JP.has('Q'))clearEchoes();
   if(JP.has('RS')){loadLevel(G.lvlIdx);msg('СЕКТОР ПЕРЕЗАПУЩЕН',120);return;}
-  if(JP.has('ESC')){G.paused=true;return;}
   if(JP.has('M')){SFX.on=!SFX.on;msg(SFX.on?'ЗВУК: ВКЛ':'ЗВУК: ВЫКЛ',90);}
+  // запись
   if(G.rec.active){
     G.rec.tick++;
-    if(G.rec.tick>=2){G.rec.tick=0;G.rec.frames.push({x:P.x,y:P.y,fc:P.face,
-      fr:!P.ground?'jump':(Math.abs(P.vx)>.5?(Math.floor(P.animT/6)%2?'runA':'runB'):'idle')});
+    if(G.rec.tick>=2){G.rec.tick=0;
+      G.rec.frames.push({x:P.x,y:P.y,fc:P.face,
+        fr:!P.ground?'jump':(Math.abs(P.vx)>.5?(Math.floor(P.animT/6)%2?'runA':'runB'):'idle')});
       if(G.rec.frames.length>=REC_MAX)stopRec(false);}
-    G.rec.beep++; if(G.rec.beep>45){G.rec.beep=0;SFX.recBeep();}
-    if(inNoise(P)){msg('ЗАПИСЬ ПРЕРВАНА ПОМЕХАМИ',130);stopRec(false);}
+    G.rec.beep++;
+    if(G.rec.beep>45){G.rec.beep=0;SFX.recBeep();}
+    if(entNoise(P.x,P.y,P_W,P_H)){msg('ПОМЕХИ: ЗАПИСЬ СОРВАНА',130);stopRec(true);}
   }
-  // платформы
-  for(const p of L.platforms){ p.ppy=p.py;
-    p.py=p.cy*TS+Math.sin(G.lt*0.02+p.ph)*TS*3;
-    p.dx=0;p.dy=p.py-p.ppy; }
   // плиты и каналы
-  let ch=[false,false,false,false];
-  for(const pl of L.plates){ pl.wasP=pl.press; pl.press=0;
+  const ch=[false,false,false,false];
+  for(const pl of L.plates){
+    pl.wasP=pl.press; pl.press=0;
     const r={x:pl.x*TS+2,y:pl.y*TS+9,w:12,h:7};
-    const ents=[P,...G.echoes.filter(e=>!e.dieT)].map(e=>({x:e.x,y:e.y,w:P_W,h:P_H}));
-    for(const e of ents)if(overlap(e,r))pl.press=1;
+    if(!P.dead&&overlap({x:P.x,y:P.y,w:P_W,h:P_H},r))pl.press=1;
+    for(const e of G.echoes){if(!e.dieT&&overlap({x:e.x,y:e.y,w:P_W,h:P_H},r))pl.press=1;}
+    if(pl.press&&!pl.wasP){
+      SFX.plate();
+      if(pl.ch===4){L.ch4t=PULSE_T;SFX.pulse();msg('ИМПУЛЬС: ШЛЮЗ-4 ОТКРЫТ',90);}
+    }
     pl.anim+=((pl.press?1:0)-pl.anim)*.3;
-    if(pl.press&&!pl.wasP){SFX.plate();
-      if(pl.ch===4){L.ch4t=PULSE_T;SFX.pulse();msg('ИМПУЛЬС: ШЛЮЗ-4 ОТКРЫТ',100);}}
-    if(pl.ch===4){ if(pl.press&&!pl.wasP)L.ch4t=PULSE_T; }
-    else if(pl.press)ch[pl.ch-1]=true;
+    if(pl.ch!==4&&pl.press)ch[pl.ch-1]=true;
   }
   if(L.ch4t>0){L.ch4t--;ch[3]=true;}
   // двери
   for(const d of L.doors){
-    const target=ch[d.ch-1]?1:0; d.prevOpen=d.open;
-    d.open=target>d.open?Math.min(d.open+.07,1):Math.max(d.open-.015,target);
+    d.prevOpen=d.open;
+    const target=ch[d.ch-1]?1:0;
+    if(target>d.open)d.open=Math.min(d.open+.07,1);
+    else d.open=Math.max(d.open-.015,target);
     d.closing=d.open<d.prevOpen-1e-9;
     const r=doorRect(d);
     if(d.closing){
       if(!P.dead&&overlap({x:P.x,y:P.y,w:P_W,h:P_H},r))killPlayer();
-      for(const e of G.echoes)if(!e.dieT&&overlap({x:e.x,y:e.y,w:P_W,h:P_H},r))echoDie(e);
+      for(const e of G.echoes){if(!e.dieT&&overlap({x:e.x,y:e.y,w:P_W,h:P_H},r))echoDie(e);}
     }
     if((d.open>0.02)!==(d.prevOpen>0.02))SFX.door(d.open>0.02);
   }
-  // эхо
   stepEchoes();
   // катушки
   for(const c of L.coils){ if(c.taken)continue;
     if(overlap({x:P.x,y:P.y,w:P_W,h:P_H},{x:c.x*TS+2,y:c.y*TS+2,w:12,h:12})){
       c.taken=true;L.coilsGot++;SFX.coil();burst(c.x*TS+8,c.y*TS+8,'#ffcf7a',14);
       msg('КАТУШКА '+L.coilsGot+' / '+L.totalCoils,90);}}
-  // шипы и кислота — игрок
+  // шипы и кислота
   if(!P.dead){
-    const box={x:P.x+1,y:P.y+2,w:P_W-2,h:P_H-2};
-    for(const s of L.spikes)if(overlap(box,{x:s.x*TS+2,y:s.y*TS+6,w:12,h:10})){killPlayer();break;}
-    const tx=Math.floor((P.x+4)/TS),ty=Math.floor((P.y+P_H-2)/TS);
-    if(ty>=0&&ty<L.H&&tx>=0&&tx<L.W&&L.grid[ty][tx]==='~')killPlayer();
+    const bx={x:P.x+1,y:P.y+2,w:P_W-2,h:P_H-2};
+    for(const s of L.spikes){if(overlap(bx,{x:s.x*TS+2,y:s.y*TS+6,w:12,h:10})){killPlayer();break;}}
+    if(!P.dead){
+      const tx=Math.floor((P.x+4)/TS),ty=Math.floor((P.y+P_H-2)/TS);
+      if(ty>=0&&ty<L.H&&tx>=0&&tx<L.W&&L.grid[ty][tx]==='~')killPlayer();
+    }
   }
   // выход
   if(L.exit&&!G.winT&&overlap({x:P.x,y:P.y,w:P_W,h:P_H},{x:L.exit.x*TS-4,y:L.exit.y*TS-8,w:24,h:24})){
-    G.winT=1; if(G.rec.active)stopRec(false);
+    G.winT=1;
+    if(G.rec.active)stopRec(true);
     burst(P.x+4,P.y+6,'#ffd27a',20);
   }
   // камера
-  const tx=P.x+P.face*26-VW/2, ty=camY(P.y);
-  G.cam.x=lerp(G.cam.x,clamp(tx,0,Math.max(0,L.W*TS-VW)),.1);
-  G.cam.y=lerp(G.cam.y,ty,.12);
+  const tx2=P.x+P.face*26-VW/2;
+  G.cam.x=lerp(G.cam.x,clamp(tx2,0,Math.max(0,L.W*TS-VW)),.1);
+  G.cam.y=lerp(G.cam.y,camY(P.y),.12);
   if(G.shake>0)G.shake*=.85;
   if(G.glitch>0)G.glitch--;
   // пыль у ламп
-  if(G.lt%9===0){const L2=G.lvl;
-    if(L2.lamps.length&&Math.random()<.6){const lp=L2.lamps[(Math.random()*L2.lamps.length)|0];
-      G.parts.push({x:lp.x+(Math.random()-.5)*30,y:lp.y+Math.random()*40,vx:(Math.random()-.5)*.12,vy:.06+Math.random()*.05,life:120,c:'dust',s:1,g:0});}}
+  if(G.lt%9===0&&L.lamps.length&&Math.random()<.6){
+    const lp=L.lamps[(Math.random()*L.lamps.length)|0];
+    G.parts.push({x:lp.x+(Math.random()-.5)*30,y:lp.y+Math.random()*40,vx:(Math.random()-.5)*.12,vy:.06+Math.random()*.05,life:120,c:'dust',s:1,g:0});}
   // пузыри кислоты
-  if(G.lt%14===0){const acids=L.acid.filter(a=>a.top);
-    if(acids.length){const a=acids[(Math.random()*acids.length)|0];
+  if(G.lt%14===0){
+    const tops=L.acid.filter(function(a){return a.top;});
+    if(tops.length){const a=tops[(Math.random()*tops.length)|0];
       G.parts.push({x:a.x*TS+Math.random()*16,y:a.y*TS+13,vx:0,vy:-.25-Math.random()*.2,life:40,c:'#9fe08a',s:1,g:0});}}
 }
-function camY(py){const L=G.lvl,worldH=L.H*TS;
-  if(worldH<=VH)return -(VH-worldH)/2;
-  return clamp(py-VH*.55,0,worldH-VH);}
-function killPlayer(){const P=G.player; if(P.dead||G.winT)return;
+function killPlayer(){const P=G.player;
+  if(P.dead||G.winT)return;
   P.dead=true;P.deadT=0;G.deaths++;G.save.deaths++;G.glitch=50;G.shake=5;SFX.death();
   if(G.rec.active)stopRec(true);
   burst(P.x+4,P.y+6,'#e8e2d4',30); msg('СИГНАЛ ПОТЕРЯН',80);}
-function burst(x,y,c,n){for(let i=0;i<n;i++){const a=Math.random()*6.28,v=.5+Math.random()*1.5;
-  G.parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.4,life:20+Math.random()*25,c,s:Math.random()<.4?2:1,g:.03});}}
-function stepParts(){for(const p of G.parts){p.x+=p.vx;p.y+=p.vy;p.vy+=p.g||0;p.life--;}
-  G.parts=G.parts.filter(p=>p.life>0);}
-function msg(t,d){G.msg=t;G.msgT=d;}
+function stepParts(){
+  for(const p of G.parts){p.x+=p.vx;p.y+=p.vy;p.vy+=p.g||0;p.life--;}
+  G.parts=G.parts.filter(function(p){return p.life>0;});}
 
 // ---------- переходы ----------
 function startWipe(){G.state='wipe';G.wipe=0;G.wipeDir=1;SFX.n(.4,300,1,.15);}
 function afterWipe(){
-  // фиксация результата
   const L=G.lvl,i=G.lvlIdx;
   G.save.coils[i]=Math.max(G.save.coils[i]||0,L.coilsGot);
   G.save.time=(G.save.time||0)+G.lt;
-  if(i+1>=(LEVELS.length)){G.save.unlocked=Math.max(G.save.unlocked,LEVELS.length-1);
-    saveGame();G.state='final';G.finalShown=0;SFX.win();return;}
+  if(i+1>=LEVELS.length){
+    G.save.unlocked=LEVELS.length-1; saveGame();
+    G.state='final';G.finalShown=0;G.wipeDir=-1;SFX.win(); return;}
   G.save.unlocked=Math.max(G.save.unlocked,i+1); saveGame();
   G.lvlIdx=i+1; G.state='brief'; G.wipeDir=-1;
 }
@@ -694,39 +671,45 @@ const cv=document.getElementById('game'),ctx=cv.getContext('2d');
 const ui=document.getElementById('ui'),uctx=ui.getContext('2d');
 cv.width=VW;cv.height=VH; ctx.imageSmoothingEnabled=false;
 const lcv=document.createElement('canvas'),lctx=lcv.getContext('2d');
+const lightCv=document.createElement('canvas');
+lightCv.width=VW;lightCv.height=VH;
+const lightCtx=lightCv.getContext('2d');
 const bgA=document.createElement('canvas'),bgB=document.createElement('canvas');
 bgA.width=bgB.width=VW;bgA.height=bgB.height=VH;
 let SC=1;
 function resize(){
-  const w=innerWidth,h=innerHeight; let s=Math.min(w/VW,h/VH);
-  if(s>1)s=Math.floor(s); SC=s;
+  const w=innerWidth,h=innerHeight;
+  let s=Math.min(w/VW,h/VH);
+  if(s>1)s=Math.floor(s);
+  SC=s;
   const st=document.getElementById('stage');
   st.style.width=VW*s+'px'; st.style.height=VH*s+'px';
   ui.width=VW*s; ui.height=VH*s;
 }
 addEventListener('resize',resize); resize();
 
-// ---------- кеш статичных тайлов ----------
+// ---------- кеш тайлов ----------
 function buildCache(){
   const L=G.lvl; if(!L)return;
   lcv.width=L.W*TS; lcv.height=L.H*TS;
-  const g=lctx; g.clearRect(0,0,lcv.width,lcv.height);
+  const g=lctx;
+  g.clearRect(0,0,lcv.width,lcv.height);
   for(let y=0;y<L.H;y++)for(let x=0;x<L.W;x++){
     const ch=L.grid[y][x],px=x*TS,py=y*TS;
     if(ch==='#'){
       const openTop=y>0?L.grid[y-1][x]!=='#':true;
-      if(openTop){ // кафельный пол / верхняя кромка
+      if(openTop){
         g.fillStyle='#6f8b86'; g.fillRect(px,py,TS,TS);
         g.fillStyle='#799691';
         g.fillRect(px+1,py+1,6,6); g.fillRect(px+9,py+1,6,6);
         g.fillRect(px+1,py+9,6,6); g.fillRect(px+9,py+9,6,6);
-        g.fillStyle='#546d69';
-        g.fillRect(px+7,py,1,TS); g.fillRect(px,py+7,TS,1);
+        g.fillStyle='#546d69'; g.fillRect(px+7,py,1,TS); g.fillRect(px,py+7,TS,1);
         g.fillStyle='#93b0aa'; g.fillRect(px,py,TS,2);
-        if(hash(x,y)>.6){g.fillStyle='#5c736f';g.fillRect(px+((hash(x,y*3)*10)|0)+2,py+((hash(x*3,y)*10)|0)+2,3,2);}
-        if(hash(x*2,y)>.87){ // предупреждающая кромка
-          for(let i=0;i<4;i++){g.fillStyle=i%2?'#c9a13b':'#2c2c28';g.fillRect(px+i*4,py,4,3);}}
-      } else { // бетонная толща
+        if(hash(x,y)>.6){g.fillStyle='#5c736f';
+          g.fillRect(px+((hash(x,y*3)*10)|0)+2,py+((hash(x*3,y)*10)|0)+2,3,2);}
+        if(hash(x*2,y)>.87)for(let i=0;i<4;i++){
+          g.fillStyle=i%2?'#c9a13b':'#2c2c28';g.fillRect(px+i*4,py,4,3);}
+      } else {
         g.fillStyle='#4c4a45'; g.fillRect(px,py,TS,TS);
         for(let i=0;i<5;i++){const h1=hash(x*31+i,y*17+i);
           g.fillStyle=h1>.5?'#54524c':'#44423d';
@@ -735,14 +718,15 @@ function buildCache(){
           if(hash(x,y*5)>.7){g.fillStyle='#3a3833';g.fillRect(px+6,py+TS-2,2,4);}}
         if(x>0&&L.grid[y][x-1]!=='#'){g.fillStyle='#5a5852';g.fillRect(px,py,2,TS);}
         if(x+1<L.W&&L.grid[y][x+1]!=='#'){g.fillStyle='#3b3a36';g.fillRect(px+TS-2,py,2,TS);}
-        if(hash(x*7,y*3)>.94){g.fillStyle='rgba(107,138,96,.5)';g.fillRect(px+2,py+9,12,4);} // советская зелёная краска
+        if(hash(x*7,y*3)>.94){g.fillStyle='rgba(107,138,96,.5)';g.fillRect(px+2,py+9,12,4);}
       }
-    } else if(ch==='='){ // решётка
+    } else if(ch==='='){
       g.fillStyle='#6d747c'; g.fillRect(px,py,TS,5);
-      g.fillStyle='#494f55'; for(let i=0;i<4;i++)g.fillRect(px+2+i*4,py+1,2,3);
+      g.fillStyle='#494f55';
+      for(let i=0;i<4;i++)g.fillRect(px+2+i*4,py+1,2,3);
       g.fillStyle='#8b939b'; g.fillRect(px,py,TS,1);
       g.fillStyle='#3c4147'; g.fillRect(px,py+5,TS,1);
-    } else if(ch==='^'){ // шипы
+    } else if(ch==='^'){
       g.fillStyle='#23262b'; g.fillRect(px,py+13,TS,3);
       for(let i=0;i<4;i++){const sx=px+i*4;
         g.fillStyle='#9aa3a8';
@@ -750,30 +734,36 @@ function buildCache(){
         g.fillStyle='#c8d0d4';g.fillRect(sx+1,py+9,1,4);}
     }
   }
-  // трафаретные надписи
-  if(L.def.signs)for(const s of L.def.signs){
-    g.save(); g.globalAlpha=.62; g.font='7px "IBM Plex Mono",monospace';
-    g.fillStyle=hash(s.x,s.y)>.5?'#c24b3a':'#b9b3a4';
-    g.fillText(s.t,s.x*TS,s.y*TS); g.restore();
+  if(L.def.signs){
+    g.save();
+    g.font='8px "IBM Plex Mono",monospace';
+    for(const s of L.def.signs){
+      g.globalAlpha=.6;
+      g.fillStyle=hash(s.x,s.y)>.5?'#c24b3a':'#b9b3a4';
+      g.fillText(s.t,s.x*TS,s.y*TS);
+    }
+    g.restore();
   }
 }
-document.fonts&&document.fonts.ready.then(()=>{if(G.lvl)buildCache();});
+if(document.fonts&&document.fonts.ready){
+  document.fonts.ready.then(function(){if(G.lvl)buildCache();});
+}
 
-// ---------- фоновые слои (процедурные, кешируются) ----------
-function buildBG(){
-  // дальний слой: окна, баки
-  let g=bgA.getContext('2d'); g.clearRect(0,0,VW,VH);
-  const gr=g.createLinearGradient(0,0,0,VH); gr.addColorStop(0,'#101417');gr.addColorStop(1,'#0a0d10');
+// ---------- фоновые слои ----------
+(function buildBG(){
+  let g=bgA.getContext('2d');
+  const gr=g.createLinearGradient(0,0,0,VH);
+  gr.addColorStop(0,'#101417');gr.addColorStop(1,'#0a0d10');
   g.fillStyle=gr; g.fillRect(0,0,VW,VH);
   for(let i=0;i<7;i++){const x=hash(i,11)*VW,y=30+hash(i,22)*160;
     g.fillStyle='#151b1f'; g.fillRect(x,y,26,38);
     g.fillStyle='rgba(122,142,128,.16)'; g.fillRect(x+3,y+4,20,14);
-    g.fillStyle='#0c1114'; for(let b=0;b<3;b++)g.fillRect(x+3+b*7,y+3,2,32);}
+    g.fillStyle='#0c1114';
+    for(let b=0;b<3;b++)g.fillRect(x+3+b*7,y+3,2,32);}
   for(let i=0;i<4;i++){const x=hash(i,33)*VW;
     g.fillStyle='#131719'; g.fillRect(x,60,90,210);
     g.fillStyle='#181d20'; g.fillRect(x+8,50,74,16);}
-  // средний слой: трубы, кабели, балки
-  g=bgB.getContext('2d'); g.clearRect(0,0,VW,VH);
+  g=bgB.getContext('2d');
   for(let i=0;i<5;i++){const y=20+hash(i,44)*220;
     g.fillStyle='#1d2126'; g.fillRect(0,y,VW,7+((hash(i,55)*6)|0));
     g.fillStyle='#23282e'; g.fillRect(0,y,VW,2);
@@ -782,69 +772,72 @@ function buildBG(){
     g.fillStyle='#191d21'; g.fillRect(x,0,6,60+hash(i,77)*120);}
   g.strokeStyle='rgba(10,12,14,.9)'; g.lineWidth=2;
   for(let i=0;i<6;i++){const x0=hash(i,88)*VW,x1=x0+60+hash(i,99)*120;
-    g.beginPath(); g.moveTo(x0,0); g.quadraticCurveTo((x0+x1)/2,26+hash(i,111)*30,x1,0); g.stroke();}
-  g.fillStyle='rgba(201,161,59,.14)'; g.fillRect(60,110,20,26); // щит
-}
-buildBG();
+    g.beginPath(); g.moveTo(x0,0);
+    g.quadraticCurveTo((x0+x1)/2,26+hash(i,111)*30,x1,0); g.stroke();}
+})();
 
 // ---------- рендер мира ----------
 function renderWorld(){
   const L=G.lvl;
   ctx.fillStyle='#07090b'; ctx.fillRect(0,0,VW,VH);
-  const camX=G.cam.x+((Math.random()-.5)*G.shake), camY=G.cam.y+((Math.random()-.5)*G.shake);
-  // параллакс
-  for(const [cvv,k] of [[bgA,.18],[bgB,.42]]){
-    const xo=-((camX*k)%VW), yo=-((camY*.5*k)%VH);
-    for(let ix=0;ix<2;ix++)for(let iy=0;iy<2;iy++)
-      ctx.drawImage(cvv,xo+ix*VW,yo+iy*VH);
+  if(!L)return;
+  const camX=G.cam.x+(Math.random()-.5)*G.shake;
+  const camYv=G.cam.y+(Math.random()-.5)*G.shake;
+  const layers=[[bgA,.16],[bgB,.4]];
+  for(const lay of layers){
+    const k=lay[1];
+    const xo=-((((camX*k)%VW)+VW)%VW);
+    const yo=-((((camYv*.5*k)%VH)+VH)%VH);
+    for(let ix=0;ix<2;ix++)for(let iy=0;iy<2;iy++)ctx.drawImage(lay[0],xo+ix*VW,yo+iy*VH);
   }
-  // вентиляторы
-  drawFan(120+((-(camX*.42))%VW+VW)%VW,90,.42);
-  drawFan(390+((-(camX*.42))%VW+VW)%VW,170,.42);
-  ctx.save(); ctx.translate(-Math.round(camX),-Math.round(camY));
-  if(L){
-    ctx.drawImage(lcv,0,0);
-    drawAcid(L); drawNoise(L);
-    drawDoors(L); drawPlates(L); drawExit(L); drawPlatforms(L); drawCoils(L);
-    // эхо
-    for(const e of G.echoes)drawEcho(e);
-    // игрок
-    const P=G.player;
-    if(!P.dead){
-      const fr=!P.ground?'jump':(Math.abs(P.vx)>.5?(Math.floor(P.animT/6)%2?'runA':'runB'):'idle');
-      drawDude(ctx,P.x,P.y,fr,P.face,PAL_P,1);
-      if(G.rec.active){ctx.strokeStyle='rgba(125,243,232,.5)';ctx.strokeRect(P.x-3,P.y-3,P_W+6,P_H+6);}
-    }
-    // частицы
-    for(const p of G.parts){
-      if(p.c==='dust'){ctx.fillStyle='rgba(200,210,200,.25)';ctx.fillRect(p.x,p.y,1,1);}
-      else{ctx.globalAlpha=clamp(p.life/25,0,1);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,p.s,p.s);ctx.globalAlpha=1;}
-    }
+  drawFan(120+((-camX*.4)%VW+VW)%VW,86);
+  drawFan(380+((-camX*.4)%VW+VW)%VW,168);
+  ctx.save();
+  ctx.translate(-Math.round(camX),-Math.round(camYv));
+  ctx.drawImage(lcv,0,0);
+  drawAcid(L);drawNoise(L);drawDoors(L);drawPlates(L);drawExit(L);drawPlatforms(L);drawCoils(L);
+  for(const e of G.echoes)drawEcho(e);
+  const P=G.player;
+  if(!P.dead){
+    const fr=!P.ground?'jump':(Math.abs(P.vx)>.5?(Math.floor(P.animT/6)%2?'runA':'runB'):'idle');
+    drawDude(ctx,P.x,P.y,fr,P.face,PAL_P,1);
+    if(G.rec.active){ctx.strokeStyle='rgba(125,243,232,.55)';
+      ctx.strokeRect(P.x-3.5,P.y-3.5,P_W+7,P_H+7);}
   }
+  for(const p of G.parts){
+    if(p.c==='dust')continue;
+    ctx.globalAlpha=clamp(p.life/25,0,1);
+    ctx.fillStyle=p.c; ctx.fillRect(p.x,p.y,p.s,p.s);}
+  ctx.globalAlpha=1;
   ctx.restore();
-  // освещение
-  if(L)drawLight(camX,camY);
-  // глитч смерти
+  drawLight(camX,camYv);
+  renderDust(camX,camYv);
   if(G.glitch>0&&G.player.dead){
-    for(let i=0;i<4;i++){const sy=Math.random()*VH,h=2+Math.random()*8,off=(Math.random()-.5)*24;
-      ctx.drawImage(cv,0,sy,VW,h,off,sy,VW,h);}
+    for(let i=0;i<4;i++){
+      const sy=Math.random()*VH,h2=2+Math.random()*8,off=(Math.random()-.5)*24;
+      ctx.drawImage(cv,0,sy,VW,h2,off,sy,VW,h2);}
     ctx.fillStyle='rgba(255,60,40,.12)';ctx.fillRect(0,0,VW,VH);
   }
-  // виньетка записи
-  if(G.rec.active){ctx.fillStyle='rgba(125,243,232,.05)';
+  if(G.rec.active){
+    ctx.fillStyle='rgba(125,243,232,.05)';
     ctx.fillRect(0,0,VW,8);ctx.fillRect(0,VH-8,VW,8);
-    const sy=(G.t*3)%VH; ctx.fillStyle='rgba(125,243,232,.06)';ctx.fillRect(0,sy,VW,10);}
+    const sy=(G.t*3)%VH;
+    ctx.fillStyle='rgba(125,243,232,.06)'; ctx.fillRect(0,sy,VW,10);}
 }
-function drawFan(x,y,k){
+function drawFan(x,y){
   ctx.save();ctx.translate(x,y);
   ctx.fillStyle='#12161a';ctx.beginPath();ctx.arc(0,0,26,0,7);ctx.fill();
   ctx.save();ctx.rotate(G.t*.05);
   ctx.fillStyle='#1c2227';
   for(let i=0;i<4;i++){ctx.rotate(Math.PI/2);ctx.fillRect(-3,-24,6,22);}
   ctx.restore();
-  ctx.strokeStyle='#242b31';ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,26,0,7);ctx.stroke();
+  ctx.strokeStyle='#242b31';ctx.lineWidth=3;
+  ctx.beginPath();ctx.arc(0,0,26,0,7);ctx.stroke();
   ctx.strokeStyle='#171c20';ctx.lineWidth=1;
-  for(let i=0;i<3;i++){const a=i*1.05;ctx.beginPath();ctx.moveTo(-Math.cos(a)*26,-Math.sin(a)*26);ctx.lineTo(Math.cos(a)*26,Math.sin(a)*26);ctx.stroke();}
+  for(let i=0;i<3;i++){const a=i*1.05;
+    ctx.beginPath();
+    ctx.moveTo(-Math.cos(a)*26,-Math.sin(a)*26);
+    ctx.lineTo(Math.cos(a)*26,Math.sin(a)*26);ctx.stroke();}
   ctx.restore();
 }
 function drawAcid(L){
@@ -868,10 +861,9 @@ function drawNoise(L){
     for(let i=0;i<2;i++){
       const h1=hash(n.x*13+i,n.y*7+((G.t>>3)+i));
       ctx.fillStyle=h1>.5?'rgba(200,240,255,.3)':'rgba(120,200,255,.2)';
-      ctx.fillRect(px+h1*12,py+hash(i,n.y+G.t>>2)*14,1+h1*4,1);
+      ctx.fillRect(px+h1*12,py+hash(i,n.y+(G.t>>2))*14,1+h1*4,1);
     }
-    // предупреждающая кромка
-    const nb=(dx,dy)=>{const tx=n.x+dx,ty=n.y+dy;
+    const nb=function(dx,dy){const tx=n.x+dx,ty=n.y+dy;
       return tx<0||ty<0||tx>=L.W||ty>=L.H||L.grid[ty][tx]!=='@';};
     if(nb(0,-1))for(let i=0;i<4;i++){ctx.fillStyle=i%2?'#c9a13b':'#2c2c28';ctx.fillRect(px+i*4,py,4,2);}
     if(nb(0,1))for(let i=0;i<4;i++){ctx.fillStyle=i%2?'#c9a13b':'#2c2c28';ctx.fillRect(px+i*4,py+TS-2,4,2);}
@@ -880,21 +872,23 @@ function drawNoise(L){
 function drawDoors(L){
   for(const d of L.doors){
     const px=d.x*TS, floorY=(d.y1+1)*TS, full=(d.y1-d.y0+1)*TS, h=full*(1-d.open);
-    // стойки
-    ctx.fillStyle='#3a3f45'; ctx.fillRect(px-3,d.y0*TS,3,full+4); ctx.fillRect(px+TS,d.y0*TS,3,full+4);
-    // створка
+    ctx.fillStyle='#3a3f45';
+    ctx.fillRect(px-3,d.y0*TS-2,3,full+4);
+    ctx.fillRect(px+TS,d.y0*TS-2,3,full+4);
     if(h>1){
       ctx.fillStyle='#565d64'; ctx.fillRect(px+3,floorY-h,10,h);
-      ctx.fillStyle='#454b51'; for(let y=floorY-h;y<floorY-4;y+=6)ctx.fillRect(px+3,y,10,2);
-      for(let i=0;i<3;i++){ctx.fillStyle=i%2?'#c9a13b':'#2c2c28';ctx.fillRect(px+3+i*4,floorY-h-0+Math.max(0,h-4)+0- (0),4,3);}
-      ctx.fillStyle=i0(); function i0(){return '#c9a13b';}
-      for(let i=0;i<3;i++){ctx.fillStyle=i%2?'#c9a13b':'#2c2c28';ctx.fillRect(px+3+i*4,floorY-3,4,3);}
+      ctx.fillStyle='#454b51';
+      for(let y=floorY-h+3;y<floorY-5;y+=6)ctx.fillRect(px+3,y,10,2);
+      for(let i=0;i<3;i++){ctx.fillStyle=i%2?'#c9a13b':'#2c2c28';ctx.fillRect(px+3+i*4,floorY-h,4,3);}
     }
-    // лампа + номер канала
+    for(let i=0;i<3;i++){ctx.fillStyle=i%2?'#c9a13b':'#2c2c28';ctx.fillRect(px+3+i*4,floorY-3,4,3);}
     const on=d.open>.5;
-    ctx.fillStyle=on?'#3f9e58':'#b03a2e'; ctx.fillRect(px+5,d.y0*TS-6,6,4);
-    ctx.font='6px "IBM Plex Mono",monospace'; ctx.fillStyle='rgba(220,215,200,.75)';
-    ctx.fillText('ШЛЮЗ-'+d.ch,px-4,d.y0*TS-10);
+    const blink=d.ch===4&&L.ch4t>0&&(G.t>>3)%2;
+    ctx.fillStyle=blink?'#ffcf4a':(on?'#3f9e58':'#b03a2e');
+    ctx.fillRect(px+5,d.y0*TS-8,6,4);
+    ctx.font='6px "IBM Plex Mono",monospace';
+    ctx.fillStyle='rgba(220,215,200,.7)';
+    ctx.fillText('ШЛЮЗ-'+d.ch,px-2,d.y0*TS-11);
   }
 }
 function drawPlates(L){
@@ -906,7 +900,8 @@ function drawPlates(L){
     ctx.fillStyle=p.ch===4?'#dcb43f':'#a8b0b8'; ctx.fillRect(px+4,py+8+dp,8,2);
     ctx.fillStyle=p.press?(p.ch===4?'#ffcf4a':'#5fe07a'):'#54302c';
     ctx.fillRect(px+7,py+11,2,2);
-    if(p.ch===4){ctx.font='6px "IBM Plex Mono",monospace';ctx.fillStyle='rgba(220,190,90,.8)';ctx.fillText('ИМП',px+3,py+5);}
+    if(p.ch===4){ctx.font='6px "IBM Plex Mono",monospace';
+      ctx.fillStyle='rgba(220,190,90,.8)';ctx.fillText('ИМП',px+3,py+5);}
   }
 }
 function drawExit(L){
@@ -915,11 +910,11 @@ function drawExit(L){
   ctx.fillStyle='#33383e'; ctx.fillRect(px-4,py-14,24,30);
   ctx.fillStyle='#22262b'; ctx.fillRect(px-2,py-12,20,28);
   const gl=.5+.5*Math.sin(G.t*.08);
-  ctx.fillStyle=`rgba(120,240,140,${.35+.4*gl})`; ctx.fillRect(px+6,py-6,4,6);
+  ctx.fillStyle='rgba(120,240,140,'+(.35+.4*gl)+')';
+  ctx.fillRect(px+6,py-6,4,6);
   ctx.fillStyle='#0e1a10'; ctx.fillRect(px+5,py-2,6,16);
   ctx.font='6px "IBM Plex Mono",monospace';
   ctx.fillStyle='rgba(140,240,160,.9)'; ctx.fillText('ВЫХОД',px-6,py-17);
-  ctx.fillStyle='#3f9e58'; ctx.fillRect(px-1,py-15,3,2);
 }
 function drawPlatforms(L){
   for(const p of L.platforms){
@@ -928,7 +923,8 @@ function drawPlatforms(L){
     ctx.beginPath();ctx.moveTo(p.cx*TS,py-p.rope);ctx.lineTo(p.cx*TS,py);ctx.stroke();
     ctx.fillStyle='#6d747c'; ctx.fillRect(px,py,p.w,p.h);
     ctx.fillStyle='#8b939b'; ctx.fillRect(px,py,p.w,2);
-    ctx.fillStyle='#494f55'; for(let i=0;i<6;i++)ctx.fillRect(px+4+i*7,py+3,3,3);
+    ctx.fillStyle='#494f55';
+    for(let i=0;i<6;i++)ctx.fillRect(px+4+i*7,py+3,3,3);
     ctx.fillStyle='#c9a13b'; ctx.fillRect(px,py+p.h-2,3,2); ctx.fillRect(px+p.w-3,py+p.h-2,3,2);
   }
 }
@@ -937,13 +933,14 @@ function drawCoils(L){
     const px=c.x*TS+8,py=c.y*TS+8,ph=G.t*.05+c.ph;
     const b=.6+.4*Math.sin(ph*2);
     ctx.fillStyle='#8a6b2d'; ctx.fillRect(px-4,py-3,8,6);
-    ctx.fillStyle=`rgba(255,207,122,${.7+.3*b})`;
+    ctx.fillStyle='rgba(255,207,122,'+(.7+.3*b)+')';
     ctx.fillRect(px-3,py-2,2,4); ctx.fillRect(px+1,py-2,2,4);
-    ctx.fillStyle=`rgba(255,230,170,${b})`; ctx.fillRect(px-1,py-1,2,2);
+    ctx.fillStyle='rgba(255,230,170,'+b+')'; ctx.fillRect(px-1,py-1,2,2);
   }
 }
 function drawEcho(e){
-  let x=e.x,y=e.y,al=e.frozen?.5+.15*Math.sin(G.t*.05):.62;
+  let x=e.x,y=e.y;
+  let al=e.frozen?(.5+.15*Math.sin(G.t*.05)):.62;
   if(e.dieT){al=Math.max(0,1-e.dieT/22)*.7; y-=e.dieT*.3;}
   else if(e.playing&&G.t%17<2)x+=(Math.random()-.5)*2;
   drawDude(ctx,x,y,e.fr,e.face,PAL_E,al);
@@ -952,49 +949,55 @@ function drawEcho(e){
     ctx.fillRect(x-2,y+((Math.random()*13)|0),P_W+4,1);
   }
 }
-function drawLight(camX,camY){
-  const L=G.lvl, amb=L.dark?.93:.42;
-  lctx.clearRect(0,0,VW,VH);
-  lctx.globalCompositeOperation='source-over';
-  lctx.fillStyle=`rgba(3,5,9,${amb})`; lctx.fillRect(0,0,VW,VH);
-  lctx.globalCompositeOperation='destination-out';
-  const cut=(wx,wy,r,s)=>{const x=wx-camX,y=wy-camY;
+function drawLight(camX,camYv){
+  const L=G.lvl; if(!L)return;
+  const amb=L.dark?0.92:0.40;
+  const g=lightCtx;
+  g.setTransform(1,0,0,1,0,0);
+  g.globalCompositeOperation='source-over';
+  g.clearRect(0,0,VW,VH);
+  g.fillStyle='rgba(3,5,9,'+amb+')'; g.fillRect(0,0,VW,VH);
+  g.globalCompositeOperation='destination-out';
+  const cut=function(wx,wy,r,s){
+    const x=wx-camX,y=wy-camYv;
     if(x<-r||x>VW+r||y<-r||y>VH+r)return;
-    const g=lctx.createRadialGradient(x,y,2,x,y,r);
-    g.addColorStop(0,`rgba(0,0,0,${s})`);g.addColorStop(1,'rgba(0,0,0,0)');
-    lctx.fillStyle=g;lctx.beginPath();lctx.arc(x,y,r,0,7);lctx.fill();};
+    const gr=g.createRadialGradient(x,y,2,x,y,r);
+    gr.addColorStop(0,'rgba(0,0,0,'+s+')');gr.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=gr;g.beginPath();g.arc(x,y,r,0,7);g.fill();};
   for(const lp of L.lamps){
     const fl=.85+.15*Math.sin(G.t*.13+lp.seed*20)+(Math.random()<.01?-.4:0);
-    cut(lp.x,lp.y+6,lp.red?40:66*fl,lp.red?.8:.95);}
+    cut(lp.x,lp.y+6,lp.red?42:70*fl,lp.red?.8:.95);}
   const P=G.player;
-  if(!P.dead)cut(P.x+4,P.y+6,L.dark?52:60,.95);
-  for(const e of G.echoes)if(!e.dieT)cut(e.x+4,e.y+6,38,.9);
-  for(const c of L.coils)if(!c.taken)cut(c.x*TS+8,c.y*TS+8,22,.8);
-  if(L.exit)cut(L.exit.x*TS+8,L.exit.y*TS+2,30,.85);
-  ctx.drawImage(lcv,0,0);
+  if(P&&!P.dead)cut(P.x+4,P.y+6,L.dark?54:62,.95);
+  for(const e of G.echoes)if(!e.dieT)cut(e.x+4,e.y+6,40,.9);
+  for(const c of L.coils)if(!c.taken)cut(c.x*TS+8,c.y*TS+8,24,.8);
+  for(const pl of L.plates)cut(pl.x*TS+8,pl.y*TS+10,20,.7);
+  for(const d of L.doors)cut(d.x*TS+8,d.y0*TS-6,18,.7);
+  if(L.exit)cut(L.exit.x*TS+8,L.exit.y*TS,32,.85);
+  ctx.drawImage(lightCv,0,0);
   // тёплые блики
-  ctx.save(); ctx.translate(-Math.round(camX),-Math.round(camY));
   ctx.globalCompositeOperation='lighter';
-  const glow=(wx,wy,r,c)=>{const x=wx-Math.round(camX),y=wy-Math.round(camY);
+  const glow=function(wx,wy,r,c){
+    const x=wx-camX,y=wy-camYv;
     if(x<-r||x>VW+r||y<-r||y>VH+r)return;
-    const g=ctx.createRadialGradient(x,y,1,x,y,r);
-    g.addColorStop(0,c);g.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();};
+    const gr=ctx.createRadialGradient(x,y,1,x,y,r);
+    gr.addColorStop(0,c);gr.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=gr;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();};
   for(const lp of L.lamps){
     const f=.7+.3*Math.sin(G.t*.13+lp.seed*20);
-    glow(lp.x,lp.y+5,26,lp.red?`rgba(255,60,45,${.16*f})`:`rgba(255,190,110,${.14*f})`);
-    ctx.fillStyle=lp.red?'#ff5a45':'#ffd9a0'; ctx.fillRect(lp.x-2,lp.y,4,5);
-    ctx.fillStyle='#2c3136'; ctx.fillRect(lp.x-4,lp.y-2,8,3);}
+    glow(lp.x,lp.y+5,26,lp.red?'rgba(255,60,45,'+(.15*f)+')':'rgba(255,190,110,'+(.13*f)+')');
+    ctx.fillStyle=lp.red?'#ff5a45':'#ffd9a0';
+    ctx.fillRect(lp.x-camX-2,lp.y-camYv,4,5);
+    ctx.fillStyle='#2c3136';
+    ctx.fillRect(lp.x-camX-4,lp.y-camYv-2,8,3);}
   for(const c of L.coils)if(!c.taken)glow(c.x*TS+8,c.y*TS+8,14,'rgba(255,200,90,.22)');
-  for(const e of G.echoes)if(!e.dieT)glow(e.x+4,e.y+6,16,'rgba(110,240,230,.16)');
+  for(const e of G.echoes)if(!e.dieT)glow(e.x+4,e.y+6,16,'rgba(110,240,230,.15)');
   if(L.exit)glow(L.exit.x*TS+8,L.exit.y*TS,18,'rgba(120,240,140,.2)');
   ctx.globalCompositeOperation='source-over';
-  ctx.restore();
 }
-// пылинки поверх света
-function renderDust(){
+function renderDust(camX,camYv){
   ctx.fillStyle='rgba(210,215,205,.22)';
-  for(const p of G.parts)if(p.c==='dust')ctx.fillRect(p.x-G.cam.x,p.y-G.cam.y,1,1);
+  for(const p of G.parts)if(p.c==='dust')ctx.fillRect(p.x-camX,p.y-camYv,1,1);
 }
 
 // ============================================================
@@ -1003,119 +1006,138 @@ function renderDust(){
 const AMBER='#ffb46b', CYAN='#7df3e8', DIM='rgba(255,180,110,.55)';
 function fmtTC(f){const m=(f/3600)|0,s=((f/60)|0)%60,fr=f%60;
   return pad(m,2)+':'+pad(s,2)+':'+pad(fr,2);}
+
 function renderUI(){
-  const s=SC; uctx.setTransform(1,0,0,1,0,0);
+  uctx.setTransform(1,0,0,1,0,0);
   uctx.clearRect(0,0,ui.width,ui.height);
-  uctx.scale(s,s);
-  const W=VW,H=VH;
-  // рамка камеры наблюдения
+  uctx.scale(SC,SC);
   uctx.strokeStyle='rgba(255,180,110,.28)'; uctx.lineWidth=1;
-  const cl=14;
-  [[6,6,1,1],[W-6,6,-1,1],[6,H-6,1,-1],[W-6,H-6,-1,-1]].forEach(([x,y,dx,dy])=>{
-    uctx.beginPath();uctx.moveTo(x+dx*cl,y);uctx.lineTo(x,y);uctx.lineTo(x,y+dy*cl);uctx.stroke();});
-  if(G.state==='title'){renderTitle();return;}
-  if(G.state==='brief'){renderBrief();return;}
-  if(G.state==='final'){renderFinal();return;}
-  if(G.state!=='play'&&G.state!=='wipe')return;
-  const L=G.lvl;
-  // шапка
-  uctx.font='7px "Press Start 2P",monospace';
-  uctx.fillStyle=DIM; uctx.textAlign='left';
-  uctx.fillText(L.def.sub+' · УР.'+pad(G.lvlIdx+1,2)+' «'+L.def.name+'»',14,20);
-  uctx.textAlign='right';
-  if(G.rec.active){uctx.fillStyle=(G.t>>4)%2?'#ff4b3e':'rgba(255,75,62,.3)';
-    uctx.fillText('● REC',W-90,20); uctx.fillStyle=CYAN; uctx.fillText(fmtTC(G.lt),W-14,20);}
-  else{uctx.fillStyle='rgba(200,205,200,.4)'; uctx.fillText('▶ PLAY',W-90,20);
-    uctx.fillStyle=DIM; uctx.fillText(fmtTC(G.lt),W-14,20);}
-  uctx.textAlign='left';
-  // каналы эхо
-  uctx.font='7px "Press Start 2P",monospace';
-  uctx.fillStyle=DIM; uctx.fillText('ЭХО',14,H-32);
-  for(let i=0;i<L.echoLimit;i++){
-    const used=i<G.echoes.length||(G.rec.active&&i===G.echoes.length);
-    const recHere=G.rec.active&&i===G.echoes.length;
-    uctx.strokeStyle=DIM; uuctxStrokeRect(48+i*18,H-40,12,12);
-    if(recHere){uctx.fillStyle=(G.t>>3)%2?CYAN:'rgba(125,243,232,.25)';uctx.fillRect(50+i*18,H-38,8,8);}
-    else if(used){uctx.fillStyle=CYAN;uctx.fillRect(50+i*18,H-38,8,8);}
+  const cl=14,W=VW,H=VH;
+  const corners=[[6,6,1,1],[W-6,6,-1,1],[6,H-6,1,-1],[W-6,H-6,-1,-1]];
+  for(const c of corners){
+    uctx.beginPath();
+    uctx.moveTo(c[0]+c[2]*cl,c[1]);uctx.lineTo(c[0],c[1]);
+    uctx.lineTo(c[0],c[1]+c[3]*cl);uctx.stroke();}
+  if(G.state==='title')renderTitle();
+  else if(G.state==='brief')renderBrief();
+  else if(G.state==='final')renderFinal();
+  else if(G.state==='play'||G.state==='wipe')renderHUD();
+  if(G.wipe>0)drawWipe();
+}
+function drawWipe(){
+  const W=VW,H=VH,h2=H/2*G.wipe;
+  uctx.fillStyle='#343940';
+  uctx.fillRect(0,0,W,h2);uctx.fillRect(0,H-h2,W,h2);
+  for(let i=0;i<W/16+1;i++){
+    uctx.fillStyle=i%2?'#c9a13b':'#23262b';
+    uctx.fillRect(i*16-((G.t>>2)%16),h2-4,8,4);
+    uctx.fillRect(i*16+((G.t>>2)%16),H-h2,8,4);
   }
-  // полоса записи
-  if(G.rec.active){uctx.fillStyle='rgba(125,243,232,.2)';uctx.fillRect(48,H-22,140,4);
-    uctx.fillStyle=CYAN;uctx.fillRect(48,H-22,140*G.rec.frames.length/REC_MAX,4);}
-  // катушки
-  uctx.textAlign='right'; uctx.fillStyle=DIM;
-  uctx.fillText('КАТУШКИ '+L.coilsGot+'/'+L.totalCoils,W-14,H-32);
+}
+function renderHUD(){
+  const L=G.lvl,W=VW,H=VH;
   uctx.textAlign='left';
-  // сообщение
+  uctx.font='11px "Pixelify Sans",monospace';
+  uctx.fillStyle=DIM;
+  uctx.fillText(L.def.sub+' · СЕКТОР '+pad(G.lvlIdx+1,2)+' · '+L.def.name,14,22);
+  uctx.textAlign='right';
+  if(G.rec.active){
+    uctx.fillStyle=(G.t>>4)%2?'#ff4b3e':'rgba(255,75,62,.35)';
+    uctx.fillText('● REC',W-96,22);
+    uctx.fillStyle=CYAN;uctx.fillText(fmtTC(G.lt),W-14,22);
+  }else{
+    uctx.fillStyle='rgba(200,205,200,.45)';uctx.fillText('▶ PLAY',W-96,22);
+    uctx.fillStyle=DIM;uctx.fillText(fmtTC(G.lt),W-14,22);
+  }
+  uctx.textAlign='left';
+  uctx.fillStyle=DIM;uctx.fillText('ЭХО',14,H-28);
+  for(let i=0;i<L.echoLimit;i++){
+    const used=i<G.echoes.length;
+    const recHere=G.rec.active&&i===G.echoes.length;
+    uctx.strokeStyle=DIM;
+    uctx.strokeRect(52+i*20+.5,H-40+.5,13,13);
+    if(recHere){uctx.fillStyle=(G.t>>3)%2?CYAN:'rgba(125,243,232,.25)';uctx.fillRect(54+i*20,H-38,9,9);}
+    else if(used){uctx.fillStyle=CYAN;uctx.fillRect(54+i*20,H-38,9,9);}
+  }
+  if(G.rec.active){
+    uctx.fillStyle='rgba(125,243,232,.2)';uctx.fillRect(52,H-22,140,4);
+    uctx.fillStyle=CYAN;
+    uctx.fillRect(52,H-22,140*Math.min(1,G.rec.frames.length/REC_MAX),4);
+  }
+  uctx.textAlign='right';uctx.fillStyle=DIM;
+  uctx.fillText('КАТУШКИ '+L.coilsGot+'/'+L.totalCoils,W-14,H-28);
+  uctx.textAlign='left';
+  if(G.state==='play'&&!G.paused&&G.player&&!G.player.dead&&
+     entNoise(G.player.x,G.player.y,P_W,P_H)&&(G.t>>3)%2){
+    uctx.font='11px "Pixelify Sans",monospace';
+    uctx.fillStyle='#8fd6ff';
+    uctx.textAlign='center';uctx.fillText('~ ПОМЕХИ ~',W/2,22);uctx.textAlign='left';
+  }
   if(G.msgT>0&&G.msg){G.msgT--;
-    uctx.font='9px "IBM Plex Mono",monospace'; uctx.textAlign='center';
-    uctx.fillStyle='rgba(255,180,110,'+clamp(G.msgT/30,0,1)*.9+')';
-    uctx.fillText(G.msg,W/2,H-52); uctx.textAlign='left';}
-  // пауза
+    uctx.font='10px "IBM Plex Mono",monospace';
+    uctx.textAlign='center';
+    uctx.fillStyle='rgba(255,190,120,'+(clamp(G.msgT/30,0,1)*.95).toFixed(3)+')';
+    uctx.fillText(G.msg,W/2,H-52);
+    uctx.textAlign='left';}
   if(G.paused){
     uctx.fillStyle='rgba(2,4,6,.78)'; uctx.fillRect(0,0,W,H);
     uctx.textAlign='center';
-    uctx.font='12px "Press Start 2P",monospace'; uctx.fillStyle=AMBER;
+    uctx.font='15px "Pixelify Sans",monospace';uctx.fillStyle=AMBER;
     uctx.fillText('НАБЛЮДЕНИЕ ПРИОСТАНОВЛЕНО',W/2,H/2-46);
-    uctx.font='10px "IBM Plex Mono",monospace'; uctx.fillStyle='rgba(220,215,205,.8)';
-    ['E — запись эхо   Q — стереть эхо   R — перезапуск сектора',
-     'M — звук: '+(SFX.on?'ВКЛ':'ВЫКЛ')+'   ESC — продолжить',
-     '','СМЕРТЕЙ: '+G.deaths].forEach((t,i)=>uctx.fillText(t,W/2,H/2-14+i*18));
+    uctx.font='10px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(220,215,205,.8)';
+    const lines=['E — запись эхо · Q — стереть эхо · R — перезапуск сектора',
+      'M — звук: '+(SFX.on?'ВКЛ':'ВЫКЛ')+' · ESC — продолжить',
+      '','СМЕРТЕЙ ЗА СЕССИЮ: '+G.deaths];
+    for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],W/2,H/2-14+i*18);
     uctx.textAlign='left';
   }
-  // шторка-шлюз
-  if(G.wipe>0){
-    const h2=H/2*G.wipe;
-    [[0,'#3a3f45'],[h2-6,'#31363b']].forEach(()=>{});
-    uctx.fillStyle='#343940'; uctx.fillRect(0,0,W,h2); uctx.fillRect(0,H-h2,W,h2);
-    for(let i=0;i<W/16+1;i++){uctx.fillStyle=i%2?'#c9a13b':'#23262b';
-      uctx.fillRect(i*16-((G.t>>2)%16),h2-4,8,4); uctx.fillRect(i*16+((G.t>>2)%16),H-h2,8,4);}
-  }
-  function uuctxStrokeRect(x,y,w,h){uctx.strokeRect(x+.5,y+.5,w,h);}
 }
 function renderTitle(){
   const W=VW,H=VH;
   uctx.textAlign='center';
-  // глитч-заголовок
   const gx=(Math.random()<.05)?(Math.random()-.5)*6:0;
-  uctx.font='44px "Press Start 2P",monospace';
-  uctx.fillStyle='rgba(255,60,45,.5)'; uctx.fillText('ЭХО',W/2-3+gx,104);
-  uctx.fillStyle='rgba(125,243,232,.5)'; uctx.fillText('ЭХО',W/2+3-gx,104);
-  uctx.fillStyle='#e8e2d4'; uctx.fillText('ЭХО',W/2,104);
-  uctx.font='8px "Press Start 2P",monospace'; uctx.fillStyle=AMBER;
+  uctx.font='64px "Pixelify Sans",monospace';
+  uctx.fillStyle='rgba(255,60,45,.45)';uctx.fillText('ЭХО',W/2-3+gx,102);
+  uctx.fillStyle='rgba(125,243,232,.45)';uctx.fillText('ЭХО',W/2+3-gx,102);
+  uctx.fillStyle='#e8e2d4';uctx.fillText('ЭХО',W/2+gx*.5,102);
+  uctx.font='12px "Pixelify Sans",monospace';uctx.fillStyle=AMBER;
   uctx.fillText('ЭКСПЕРИМЕНТ №9 · ХРОНОКАМЕРА «ПУЛЬСАР-7»',W/2,128);
-  uctx.fillStyle='rgba(200,205,200,.5)'; uctx.font='9px "IBM Plex Mono",monospace';
+  uctx.font='9px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.5)';
   uctx.fillText('научно-исследовательский институт темпоральной безопасности',W/2,142);
-  // служебная записка
-  const bx=W/2-172,by=160;
-  uctx.strokeStyle='rgba(255,180,110,.4)'; uctx.strokeRect(bx+.5,by+.5,344,64);
-  uctx.fillStyle='rgba(255,214,150,.75)'; uctx.font='9px "IBM Plex Mono",monospace'; uctx.textAlign='left';
-  ['СЛУЖЕБНАЯ ЗАПИСЬ №9-041','Объекту разрешено покинуть сектор при условии','успешной демонстрации темпоральной записи.'].forEach((t,i)=>uctx.fillText(t,bx+10,by+15+i*13));
-  // печать
-  uctx.save(); uctx.translate(W/2+118,192); uctx.rotate(-.18); uctx.globalAlpha=.55;
-  uctx.strokeStyle='#c24b3a'; uctx.lineWidth=2; uctx.strokeRect(-44,-16,88,32);
-  uctx.strokeRect(-40,-12,80,24);
-  uctx.fillStyle='#c24b3a'; uctx.font='8px "Press Start 2P",monospace'; uctx.textAlign='center';
-  uctx.fillText('ОТДЕЛ 07',0,-2); uctx.fillText('ДОПУЩЕНО',0,9);
-  uctx.restore();
-  // выбор уровня
-  uctx.textAlign='center';
-  if(G.save.unlocked>0){
-    uctx.font='8px "Press Start 2P",monospace'; uctx.fillStyle=CYAN;
-    const names=['◄','►'];
-    uctx.fillText(names[0]+'  СЕКТОР '+pad(G.sel+1,2)+' · '+LEVELS[G.sel].name+'  '+names[1],W/2,248);
-    if(JP.has('L')){G.sel=(G.sel+G.save.unlocked)%(G.save.unlocked+1);SFX.recBeep();}
-    if(JP.has('R')){G.sel=(G.sel+1)%(G.save.unlocked+1);SFX.recBeep();}
-  }
-  if((G.t>>4)%2){uctx.font='9px "Press Start 2P",monospace';uctx.fillStyle='#e8e2d4';
-    uctx.fillText('[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,272);}
-  uctx.font='8px "IBM Plex Mono",monospace'; uctx.fillStyle='rgba(200,205,200,.4)';
-  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук',W/2,H-8);
+  const bx=W/2-176,by=158;
+  uctx.strokeStyle='rgba(255,180,110,.4)';
+  uctx.strokeRect(bx+.5,by+.5,352,58);
+  uctx.fillStyle='rgba(255,214,150,.75)';
+  uctx.font='9px "IBM Plex Mono",monospace';
   uctx.textAlign='left';
-  if(JP.has('OK')){G.lvlIdx=G.sel;G.state='brief';SFX.plate();}
+  const note=['СЛУЖЕБНАЯ ЗАПИСЬ №9-041',
+    'Объекту разрешено покинуть сектор при условии',
+    'успешной демонстрации темпоральной записи.'];
+  for(let i=0;i<note.length;i++)uctx.fillText(note[i],bx+10,by+15+i*13);
+  uctx.save();
+  uctx.translate(W/2+118,192); uctx.rotate(-.18); uctx.globalAlpha=.55;
+  uctx.strokeStyle='#c24b3a'; uctx.lineWidth=2;
+  uctx.strokeRect(-44,-16,88,32); uctx.strokeRect(-40,-12,80,24);
+  uctx.fillStyle='#c24b3a';
+  uctx.font='10px "Pixelify Sans",monospace';uctx.textAlign='center';
+  uctx.fillText('ОТДЕЛ 07',0,-2); uctx.fillText('ДОПУЩЕНО',0,10);
+  uctx.restore();
+  uctx.textAlign='center';
+  if((G.save.unlocked||0)>0){
+    uctx.font='11px "Pixelify Sans",monospace';uctx.fillStyle=CYAN;
+    uctx.fillText('◄  СЕКТОР '+pad(G.sel+1,2)+' · '+LEVELS[G.sel].name+'  ►',W/2,246);
+  }
+  if((G.t>>4)%2){
+    uctx.font='11px "Pixelify Sans",monospace';uctx.fillStyle='#e8e2d4';
+    uctx.fillText('[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
+  }
+  uctx.font='8px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.4)';
+  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук',W/2,H-6);
+  uctx.textAlign='left';
 }
 function renderBrief(){
   const W=VW,H=VH,d=LEVELS[G.lvlIdx];
-  uctx.fillStyle='rgba(2,4,6,.72)';uctx.fillRect(0,0,W,H);
+  uctx.fillStyle='rgba(2,4,6,.72)'; uctx.fillRect(0,0,W,H);
   uctx.textAlign='left';
   uctx.font='16px "Pixelify Sans",monospace';uctx.fillStyle=AMBER;
   uctx.fillText('ПРОТОКОЛ №'+pad(G.lvlIdx+1,2),40,64);
@@ -1129,39 +1151,40 @@ function renderBrief(){
   uctx.fillStyle=CYAN;
   uctx.fillText('ЦЕЛЬ: достичь выхода. каналов эхо: '+d.echo,40,112+lines.length*15+14);
   if((G.t>>4)%2){
-    uctx.fillStyle='#e8e2d4';uctx.font='11px "Pixelify Sans",monospace';
+    uctx.fillStyle='#e8e2d4';
+    uctx.font='11px "Pixelify Sans",monospace';
     uctx.fillText('[ ENTER ] ПРОДОЛЖИТЬ',40,H-44);
   }
   uctx.textAlign='left';
 }
-function wrap(t,n){const w=t.split(' '),r=[];let c='';
-  for(const x of w){if((c+' '+x).trim().length>n){r.push(c.trim());c=x;}else c+=' '+x;}
-  if(c.trim())r.push(c.trim()); return r;}
+function wrap(t,n){
+  const w=t.split(' '),r=[];let c='';
+  for(const x of w){
+    if((c+' '+x).trim().length>n){r.push(c.trim());c=x;}
+    else c+=' '+x;}
+  if(c.trim())r.push(c.trim());
+  return r;}
 function renderFinal(){
-  const W=VH&&VW,H=VH;
+  const W=VW,H=VH;
   uctx.fillStyle='rgba(2,4,6,.85)'; uctx.fillRect(0,0,W,H);
   uctx.textAlign='center';
-  uctx.font='16px "Press Start 2P",monospace'; uctx.fillStyle='#e8e2d4';
+  uctx.font='18px "Pixelify Sans",monospace';uctx.fillStyle='#e8e2d4';
   uctx.fillText('ЗАПИСЬ ЗАВЕРШЕНА',W/2,56);
-  uctx.font='9px "IBM Plex Mono",monospace'; uctx.fillStyle=AMBER;
-  const coils=G.save.coils.reduce((a,b)=>a+(b||0),0);
+  uctx.font='9px "IBM Plex Mono",monospace';uctx.fillStyle=AMBER;
+  const coils=G.save.coils.reduce(function(a,b){return a+(b||0);},0);
   const time=(G.save.time||0)+G.lt;
-  uctx.fillText('СОВМЕСТИМОСТЬ ЗАПИСИ С ОРИГИНАЛОМ: 100%',W/2,86);
-  uctx.fillText('ВРЕМЯ НАБЛЮДЕНИЯ: '+fmtTC(time)+'   ПОТЕРИ СИГНАЛА: '+G.save.deaths,W/2,102);
-  uctx.fillText('КАТУШКИ: '+coils+' / 24',W/2,118);
-  // телетайп финальной строки
-  G.finalShown+=(G.state==='final'&&G.finalShown<999)?1:0;
+  uctx.fillText('СОВМЕСТИМОСТЬ ЗАПИСИ С ОРИГИНАЛОМ: 100%',W/2,88);
+  uctx.fillText('ВРЕМЯ НАБЛЮДЕНИЯ: '+fmtTC(time)+'   ПОТЕРИ СИГНАЛА: '+G.save.deaths,W/2,104);
+  uctx.fillText('КАТУШКИ: '+coils+' / '+TOTAL_COILS,W/2,120);
   const full='ОБЪЕКТ ВСЕГДА БЫЛ ЭХО.';
   const shown=full.slice(0,Math.min(full.length,Math.floor(G.finalShown/6)));
-  if(G.finalShown%6===0&&shown.length<full.length&&shown.length>0)SFX.recBeep();
-  uctx.font='12px "Press Start 2P",monospace'; uctx.fillStyle=CYAN;
-  uctx.fillText(shown,W/2,160);
+  uctx.font='14px "Pixelify Sans",monospace';uctx.fillStyle=CYAN;
+  uctx.fillText(shown,W/2,164);
   if(shown.length>=full.length&&(G.t>>4)%2){
-    uctx.font='9px "IBM Plex Mono",monospace'; uctx.fillStyle='rgba(200,205,200,.7)';
-    uctx.fillText('Наблюдение прекращено. Наблюдателя нет.',W/2,186);
-    uctx.font='9px "Press Start 2P",monospace'; uctx.fillStyle='#e8e2d4';
+    uctx.font='9px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.7)';
+    uctx.fillText('Наблюдение прекращено. Наблюдателя нет.',W/2,190);
+    uctx.font='11px "Pixelify Sans",monospace';uctx.fillStyle='#e8e2d4';
     uctx.fillText('[ ENTER ] — ПЕРЕМОТАТЬ ПЛЁНКУ',W/2,H-40);
-    if(JP.has('OK')){G.state='title';G.sel=0;SFX.n(.5,200,.8,.2);}
   }
   uctx.textAlign='left';
 }
@@ -1171,10 +1194,11 @@ let acc=0,last=performance.now();
 function frame(t){
   acc+=Math.min(t-last,100); last=t;
   while(acc>=16.667){ step(); acc-=16.667; }
-  renderWorld(); renderDust(); renderUI();
+  renderWorld(); renderUI();
   requestAnimationFrame(frame);
 }
-loadLevel(0); G.state='title';
+loadLevel(0);
+G.state='title';
 requestAnimationFrame(frame);
 </script>
 </body>
