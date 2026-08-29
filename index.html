@@ -40,6 +40,7 @@
 </div>
 <script>
 "use strict";
+console.log('ЭХО · сборка 4 (frame-fix) — если видите это, файл обновлён');
 /* ============================================================
    ЭХО — эксперимент №9 · НИИ «ПУЛЬСАР» · хронокамера К-7
    ============================================================ */
@@ -113,7 +114,9 @@ const MAP={ArrowLeft:'L',KeyA:'L',ArrowRight:'R',KeyD:'R',ArrowUp:'J',KeyW:'J',S
 addEventListener('keydown',function(e){const k=MAP[e.code];
   if(k){if(!Keys[k])JP.add(k);Keys[k]=1;e.preventDefault();}SFX.init();});
 addEventListener('keyup',function(e){const k=MAP[e.code];if(k)Keys[k]=0;});
-addEventListener('blur',function(){for(const k in Keys)Keys[k]=0;if(G.state==='play')G.paused=true;});
+addEventListener('blur',function(){
+  for(const k in Keys)Keys[k]=0;
+  if(typeof G!=='undefined'&&G&&G.state==='play')G.paused=true;});
 
 const isTouch=('ontouchstart' in window);
 if(isTouch)document.getElementById('touch').style.display='block';
@@ -150,41 +153,43 @@ function drawDude(g,x,y,fr,face,pal,alpha){
 }
 
 // ============================================================
-//        ПОСТРОИТЕЛЬ КАРТ (геометрия гарантируется кодом)
+//     ПОСТРОИТЕЛЬ КАРТ (геометрия гарантируется кодом)
+//     ВНИМАНИЕ: border() — границы карты. НЕ называется frame(),
+//     чтобы не конфликтовать с главным циклом frame().
 // ============================================================
 function mkGrid(H,W){const m=[];for(let y=0;y<H;y++)m.push(new Array(W).fill('.'));return m;}
 function box(m,x0,y0,x1,y1,c){
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)
     if(m[y]&&m[y][x]!==undefined)m[y][x]=c;}
-function frame(m){const H=m.length,W=m[0].length;
+function border(m){const H=m.length,W=m[0].length;
   box(m,0,0,W-1,1,'#');box(m,0,H-1,W-1,H-1,'#');
   box(m,0,0,0,H-1,'#');box(m,W-1,0,W-1,H-1,'#');}
 function join(m){return m.map(function(r){return r.join('')});}
 
-function mapL1(){const W=52,H=12,m=mkGrid(H,W);frame(m);
-  box(m,20,8,24,8,'#');
-  m[7][23]='o';m[8][27]='o';
+function mapL1(){const W=52,H=12,m=mkGrid(H,W);border(m);
+  box(m,20,9,24,9,'#');
+  m[8][23]='o';m[8][27]='o';
   m[10][30]='^';m[10][31]='^';
   m[10][3]='P';m[10][41]='F';
   return join(m);}
 
-function mapL2(){const W=56,H=12,m=mkGrid(H,W);frame(m);
+function mapL2(){const W=56,H=12,m=mkGrid(H,W);border(m);
   box(m,20,6,20,10,'A');
   m[10][10]='1';
   m[10][25]='^';m[10][26]='^';m[8][25]='o';
-  box(m,37,8,41,8,'#');m[7][39]='o';
+  box(m,37,9,41,9,'#');m[8][39]='o';
   m[10][3]='P';m[10][48]='F';
   return join(m);}
 
-function mapL3(){const W=64,H=12,m=mkGrid(H,W);frame(m);
+function mapL3(){const W=64,H=12,m=mkGrid(H,W);border(m);
   box(m,18,6,18,10,'A');box(m,46,6,46,10,'B');
   m[10][3]='P';m[10][8]='1';
   m[10][23]='^';m[10][24]='^';m[10][27]='o';
-  box(m,28,8,32,8,'=');m[7][30]='2';
+  box(m,28,9,32,9,'=');m[8][30]='2';
   m[10][53]='o';m[10][57]='F';
   return join(m);}
 
-function mapL4(){const W=36,H=31,m=mkGrid(H,W);frame(m);
+function mapL4(){const W=36,H=31,m=mkGrid(H,W);border(m);
   box(m,1,5,10,5,'#');   m[4][3]='P'; m[4][6]='o';
   box(m,11,9,22,9,'#');  m[8][16]='^';m[8][17]='^';m[8][20]='o';
   box(m,16,13,34,13,'#');m[12][24]='o';
@@ -194,37 +199,37 @@ function mapL4(){const W=36,H=31,m=mkGrid(H,W);frame(m);
   m[29][26]='F';m[29][33]='o';
   return join(m);}
 
-function mapL5(){const W=72,H=14,m=mkGrid(H,W);frame(m);
+function mapL5(){const W=72,H=14,m=mkGrid(H,W);border(m);
   box(m,16,8,16,12,'A');box(m,60,8,60,12,'D');
   m[12][3]='P';m[12][10]='1';m[12][44]='4';m[12][67]='F';
   box(m,24,8,38,12,'@');
   m[12][30]='^';m[12][31]='^';m[10][28]='o';m[10][5]='o';
   m[12][52]='^';m[12][53]='^';
-  box(m,62,10,66,10,'=');m[9][64]='o';
+  box(m,62,11,66,11,'=');m[10][64]='o';
   return join(m);}
 
-function mapL6(){const W=72,H=14,m=mkGrid(H,W);frame(m);
+function mapL6(){const W=72,H=14,m=mkGrid(H,W);border(m);
   box(m,14,8,14,12,'A');box(m,38,8,38,12,'B');box(m,56,8,56,12,'C');
   m[12][3]='P';m[12][8]='1';m[12][20]='3';m[12][66]='F';
-  box(m,24,13,26,13,'~');
-  box(m,28,10,32,10,'=');m[9][30]='2';
+  box(m,24,13,25,13,'~');
+  box(m,28,11,32,11,'=');m[10][30]='2';
   m[10][25]='o';m[9][46]='o';m[12][62]='o';
   m[12][46]='^';m[12][47]='^';
   return join(m);}
 
-function mapL7(){const W=88,H=14,m=mkGrid(H,W);frame(m);
+function mapL7(){const W=88,H=14,m=mkGrid(H,W);border(m);
   box(m,66,7,66,12,'D');
   m[12][3]='P';m[12][8]='4';m[12][78]='F';
   m[12][18]='^';m[12][19]='^';
-  box(m,26,10,30,10,'=');
+  box(m,26,11,30,11,'=');
   box(m,26,12,30,12,'^');
   m[12][36]='^';m[12][37]='^';
-  box(m,40,10,44,10,'=');m[9][42]='o';
-  m[12][50]='^';m[12][51]='^';m[12][52]='^';
+  box(m,40,11,44,11,'=');m[10][42]='o';
+  m[12][50]='^';m[12][51]='^';
   m[10][59]='o';
   return join(m);}
 
-function mapL8(){const W=44,H=31,m=mkGrid(H,W);frame(m);
+function mapL8(){const W=44,H=31,m=mkGrid(H,W);border(m);
   box(m,1,9,24,9,'#');box(m,18,4,18,8,'A');
   m[8][3]='P';m[8][8]='1';m[8][22]='o';
   box(m,1,16,32,16,'#');box(m,28,5,28,15,'B');
@@ -235,24 +240,24 @@ function mapL8(){const W=44,H=31,m=mkGrid(H,W);frame(m);
   m[28][6]='F';m[28][33]='o';
   return join(m);}
 
-function mapL9(){const W=64,H=14,m=mkGrid(H,W);frame(m);
+function mapL9(){const W=64,H=14,m=mkGrid(H,W);border(m);
   box(m,27,8,27,12,'A');
   m[12][3]='P';m[12][20]='1';m[12][54]='F';
   m[12][12]='^';m[12][13]='^';
   box(m,32,13,34,13,'~');
   m[12][40]='^';m[12][41]='^';
   m[12][8]='o';m[10][24]='o';
-  box(m,44,10,48,10,'=');m[9][46]='o';
+  box(m,44,11,48,11,'=');m[10][46]='o';
   return join(m);}
 
-function mapL10(){const W=104,H=15,m=mkGrid(H,W);frame(m);
+function mapL10(){const W=104,H=15,m=mkGrid(H,W);border(m);
   box(m,16,9,16,13,'A');box(m,48,9,48,13,'B');box(m,90,9,90,13,'D');
   m[13][3]='P';m[13][10]='1';m[13][22]='2';m[13][62]='4';m[13][98]='F';
   box(m,26,9,44,13,'@');
   m[13][32]='^';m[13][33]='^';m[13][38]='^';m[13][39]='^';m[11][36]='o';
-  box(m,52,11,56,11,'=');m[10][54]='o';
+  box(m,52,12,56,12,'=');m[11][54]='o';
   m[13][70]='^';m[13][71]='^';
-  box(m,74,11,78,11,'=');m[10][76]='o';
+  box(m,74,12,78,12,'=');m[11][76]='o';
   m[13][82]='^';m[13][83]='^';
   return join(m);}
 
@@ -283,7 +288,7 @@ const LEVELS=[
  note:'Двойной слепой опыт: объект и его записи действуют независимо. Результат — одинаков. Это беспокоит.',
  signs:[{x:4,y:6,t:'ПЛИТА-3 ЗА ШЛЮЗОМ-1'},{x:27,y:5,t:'ВВЕРХ — ПЛИТА-2'},{x:47,y:6,t:'ОБЪЕКТ НЕ ОДИН'}]},
 {name:'ИНТЕРФЕРЕНЦИЯ',sub:'СЕКТОР Б-7',date:'11.12.1986',echo:2,dark:false,map:mapL7(),
- hint:'ЗАПИШИ ВЕСЬ ПУТЬ ОТ ЖЁЛТОЙ ПЛИТЫ ДО ШЛЮЗА · ОСТАНОВИВ ЗАПИСЬ У ШЛЮЗА — ТЫ БУДЕШЬ РЯДОМ, КОГДА ЭХО НАЖМЁТ ПЛИТУ',
+ hint:'ЗАПИШИ ВЕСЬ ПУТЬ ОТ ЖЁЛТОЙ ПЛИТЫ ДО ШЛЮЗА · ПОТОМ ПРОСТО ЖДИ У ШЛЮЗА — ЭХО НАЖМЁТ ПЛИТУ ЗА ТЕБЯ',
  note:'Шлюз-4 реагирует с задержкой. Объект — без задержки. Кто из них механизм, отчёт не уточняет.',
  signs:[{x:4,y:6,t:'ЗАПИШИ ПУТЬ ДО ШЛЮЗА'},{x:34,y:5,t:'НЕ ОСТАНАВЛИВАЙСЯ'},{x:63,y:5,t:'ШЛЮЗ-4 · 3 СЕК'}]},
 {name:'КАСКАД',sub:'СЕКТОР Б-8',date:'18.12.1986',echo:3,dark:false,map:mapL8(),
@@ -349,7 +354,7 @@ function loadLevel(i){
     let y=p.cy;
     while(y>0&&grid[y-1][p.cx]!=='#')y--;
     p.rope=(p.cy-y)*TS;});
-  // лампы: над каждым полом колонки (снизу вверх, с интервалом)
+  // лампы над этажами
   const lstep=def.dark?13:6;
   for(let x=3;x<W-2;x+=lstep+((hash(x,7)*3)|0)){
     let last=1e9;
@@ -484,7 +489,6 @@ function burst(x,y,c,n){
 // ---------- главный шаг ----------
 function step(){
   G.t++;
-  // шторка-шлюз (общая для всех состояний)
   if(G.wipeDir!==0){
     G.wipe+=G.wipeDir*0.045;
     if(G.wipeDir>0&&G.wipe>=1){G.wipe=1;G.wipeDir=0;afterWipe();}
@@ -534,7 +538,6 @@ function stepPlay(){
     if(G.winT>62)startWipe();
     return; }
   if(JP.has('ESC')){G.paused=true;return;}
-  // движение
   const dir=(Keys.R?1:0)-(Keys.L?1:0);
   if(dir!==0){P.vx=clamp(P.vx+dir*ACC,-MAXVX,MAXVX);P.face=dir;}
   else{const f=P.ground?FRIC:.08;P.vx=Math.abs(P.vx)<f?0:P.vx-Math.sign(P.vx)*f;}
@@ -543,7 +546,6 @@ function stepPlay(){
   if(P.jbuf>0&&P.coyote>0){P.vy=JUMPV;P.coyote=0;P.jbuf=0;SFX.jump();}
   if(!Keys.J&&P.vy<-2)P.vy=-2;
   P.vy=Math.min(P.vy+GRAV,MAXFALL);
-  // движущиеся платформы
   for(const p of L.platforms){
     p.ppy=p.py;
     p.py=p.cy*TS+Math.sin(G.lt*0.02+p.ph)*TS*3;
@@ -559,12 +561,10 @@ function stepPlay(){
   if(P.ground&&Math.abs(P.vx)>.6){P.stepT++;if(P.stepT>13){P.stepT=0;SFX.step();}}
   P.animT+=Math.abs(P.vx);
   if(P.y>L.H*TS+80){killPlayer();return;}
-  // клавиши
   if(JP.has('E')){ if(!G.rec.active)startRec(); else stopRec(false); }
   if(JP.has('Q'))clearEchoes();
   if(JP.has('RS')){loadLevel(G.lvlIdx);msg('СЕКТОР ПЕРЕЗАПУЩЕН',120);return;}
   if(JP.has('M')){SFX.on=!SFX.on;msg(SFX.on?'ЗВУК: ВКЛ':'ЗВУК: ВЫКЛ',90);}
-  // запись
   if(G.rec.active){
     G.rec.tick++;
     if(G.rec.tick>=2){G.rec.tick=0;
@@ -575,7 +575,6 @@ function stepPlay(){
     if(G.rec.beep>45){G.rec.beep=0;SFX.recBeep();}
     if(entNoise(P.x,P.y,P_W,P_H)){msg('ПОМЕХИ: ЗАПИСЬ СОРВАНА',130);stopRec(true);}
   }
-  // плиты и каналы
   const ch=[false,false,false,false];
   for(const pl of L.plates){
     pl.wasP=pl.press; pl.press=0;
@@ -590,7 +589,6 @@ function stepPlay(){
     if(pl.ch!==4&&pl.press)ch[pl.ch-1]=true;
   }
   if(L.ch4t>0){L.ch4t--;ch[3]=true;}
-  // двери
   for(const d of L.doors){
     d.prevOpen=d.open;
     const target=ch[d.ch-1]?1:0;
@@ -605,12 +603,10 @@ function stepPlay(){
     if((d.open>0.02)!==(d.prevOpen>0.02))SFX.door(d.open>0.02);
   }
   stepEchoes();
-  // катушки
   for(const c of L.coils){ if(c.taken)continue;
     if(overlap({x:P.x,y:P.y,w:P_W,h:P_H},{x:c.x*TS+2,y:c.y*TS+2,w:12,h:12})){
       c.taken=true;L.coilsGot++;SFX.coil();burst(c.x*TS+8,c.y*TS+8,'#ffcf7a',14);
       msg('КАТУШКА '+L.coilsGot+' / '+L.totalCoils,90);}}
-  // шипы и кислота
   if(!P.dead){
     const bx={x:P.x+1,y:P.y+2,w:P_W-2,h:P_H-2};
     for(const s of L.spikes){if(overlap(bx,{x:s.x*TS+2,y:s.y*TS+6,w:12,h:10})){killPlayer();break;}}
@@ -619,23 +615,19 @@ function stepPlay(){
       if(ty>=0&&ty<L.H&&tx>=0&&tx<L.W&&L.grid[ty][tx]==='~')killPlayer();
     }
   }
-  // выход
   if(L.exit&&!G.winT&&overlap({x:P.x,y:P.y,w:P_W,h:P_H},{x:L.exit.x*TS-4,y:L.exit.y*TS-8,w:24,h:24})){
     G.winT=1;
     if(G.rec.active)stopRec(true);
     burst(P.x+4,P.y+6,'#ffd27a',20);
   }
-  // камера
   const tx2=P.x+P.face*26-VW/2;
   G.cam.x=lerp(G.cam.x,clamp(tx2,0,Math.max(0,L.W*TS-VW)),.1);
   G.cam.y=lerp(G.cam.y,camY(P.y),.12);
   if(G.shake>0)G.shake*=.85;
   if(G.glitch>0)G.glitch--;
-  // пыль у ламп
   if(G.lt%9===0&&L.lamps.length&&Math.random()<.6){
     const lp=L.lamps[(Math.random()*L.lamps.length)|0];
     G.parts.push({x:lp.x+(Math.random()-.5)*30,y:lp.y+Math.random()*40,vx:(Math.random()-.5)*.12,vy:.06+Math.random()*.05,life:120,c:'dust',s:1,g:0});}
-  // пузыри кислоты
   if(G.lt%14===0){
     const tops=L.acid.filter(function(a){return a.top;});
     if(tops.length){const a=tops[(Math.random()*tops.length)|0];
@@ -975,7 +967,6 @@ function drawLight(camX,camYv){
   for(const d of L.doors)cut(d.x*TS+8,d.y0*TS-6,18,.7);
   if(L.exit)cut(L.exit.x*TS+8,L.exit.y*TS,32,.85);
   ctx.drawImage(lightCv,0,0);
-  // тёплые блики
   ctx.globalCompositeOperation='lighter';
   const glow=function(wx,wy,r,c){
     const x=wx-camX,y=wy-camYv;
@@ -1132,7 +1123,7 @@ function renderTitle(){
     uctx.fillText('[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
   }
   uctx.font='8px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.4)';
-  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук',W/2,H-6);
+  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 4',W/2,H-6);
   uctx.textAlign='left';
 }
 function renderBrief(){
