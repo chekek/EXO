@@ -1115,20 +1115,24 @@ function renderTitle(){
 }
 function renderBrief(){
   const W=VW,H=VH,d=LEVELS[G.lvlIdx];
-  uctx.fillStyle='rgba(2,4,6,.72)'; uctx.fillRect(0,0,W,H);
+  uctx.fillStyle='rgba(2,4,6,.72)';uctx.fillRect(0,0,W,H);
   uctx.textAlign='left';
-  uctx.font='12px "Press Start 2P",monospace'; uctx.fillStyle=AMBER;
+  uctx.font='16px "Pixelify Sans",monospace';uctx.fillStyle=AMBER;
   uctx.fillText('ПРОТОКОЛ №'+pad(G.lvlIdx+1,2),40,64);
-  uctx.font='9px "IBM Plex Mono",monospace'; uctx.fillStyle='rgba(200,205,200,.55)';
+  uctx.font='9px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.55)';
   uctx.fillText('от '+d.date+' · наблюдатель: отдел 07',40,80);
-  uctx.strokeStyle='rgba(255,180,110,.3)'; uctx.beginPath();uctx.moveTo(40,90);uctx.lineTo(W-40,90);uctx.stroke();
+  uctx.strokeStyle='rgba(255,180,110,.3)';
+  uctx.beginPath();uctx.moveTo(40,90);uctx.lineTo(W-40,90);uctx.stroke();
   uctx.fillStyle='#e6dfcf';
-  wrap(d.note,52).forEach((l,i)=>uctx.fillText(l,40,112+i*15));
-  uctx.fillStyle=CYAN; uctx.fillText('ЦЕЛЬ: достичь выхода. каналов эхо: '+d.echo,40,112+wrap(d.note,52).length*15+14);
-  if((G.t>>4)%2){uctx.fillStyle='#e8e2d4';uctx.font='9px "Press Start 2P",monospace';
-    uctx.fillText('[ ENTER ] ПРОДОЛЖИТЬ',40,H-44);}
+  const lines=wrap(d.note,52);
+  for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],40,112+i*15);
+  uctx.fillStyle=CYAN;
+  uctx.fillText('ЦЕЛЬ: достичь выхода. каналов эхо: '+d.echo,40,112+lines.length*15+14);
+  if((G.t>>4)%2){
+    uctx.fillStyle='#e8e2d4';uctx.font='11px "Pixelify Sans",monospace';
+    uctx.fillText('[ ENTER ] ПРОДОЛЖИТЬ',40,H-44);
+  }
   uctx.textAlign='left';
-  if(JP.has('OK')){loadLevel(G.lvlIdx);G.state='wipe';G.wipe=1;G.wipeDir=-1;SFX.door(true);}
 }
 function wrap(t,n){const w=t.split(' '),r=[];let c='';
   for(const x of w){if((c+' '+x).trim().length>n){r.push(c.trim());c=x;}else c+=' '+x;}
