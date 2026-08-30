@@ -40,7 +40,7 @@
 </div>
 <script>
 "use strict";
-console.log('ЭХО · сборка 5 (физика) — если видите это, файл обновлён');
+console.log('ЭХО · сборка 7 (лиминал) — если видите это, файл обновлён');
 /* ============================================================
    ЭХО — эксперимент №9 · НИИ «ПУЛЬСАР» · хронокамера К-7
    ============================================================ */
@@ -104,7 +104,10 @@ const SFX={ctx:null,master:null,on:true,
   pulse(){this.t(660,660,.09,'square',.1);this.t(660,660,.09,'square',.1,.14);this.t(880,880,.2,'square',.1,.28)},
   death(){this.t(300,40,.5,'sawtooth',.16);this.n(.4,500,.5,.2)},
   win(){[294,440,587].forEach(function(f,i){this.t(f,f,.22,'triangle',.12,i*.13)},this)},
-  deny(){this.t(200,150,.12,'square',.08)}
+  deny(){this.t(200,150,.12,'square',.08)},
+  slam(){this.n(.5,90,.7,.10);this.t(70,38,.5,'sine',.09)},
+  cough(){this.n(.09,700,1.4,.05);this.n(.12,500,1.2,.06,.14);this.n(.08,800,1.5,.04,.32)},
+  tapeStop(){this.t(1600,220,.22,'sine',.06);this.n(.12,3000,4,.04)}
 };
 
 // ---------- ввод ----------
@@ -309,7 +312,9 @@ const TOTAL_COILS=LEVELS.reduce(function(a,l){return a+l.map.join('').split('o')
 // ---------- глобальное состояние ----------
 const G={state:'title',lvlIdx:0,sel:0,t:0,lt:0,deaths:0,paused:false,
   save:null,lvl:null,echoes:[],parts:[],msg:null,msgT:0,
-  wipe:0,wipeDir:0,shake:0,glitch:0,winT:0,finalShown:0,player:null,rec:null,cam:{x:0,y:0}};
+  wipe:0,wipeDir:0,shake:0,glitch:0,winT:0,finalShown:0,player:null,rec:null,cam:{x:0,y:0},
+  film:null,filmAt:0,watch:null,watchDone:false,idleT:0,path:[],tcGlitch:0,
+  palPlayer:null,palEcho:null};
 (function(){
   let s=null;
   try{s=JSON.parse(localStorage.getItem('echo9')||'null');}catch(e){s=null;}
@@ -318,7 +323,12 @@ const G={state:'title',lvlIdx:0,sel:0,t:0,lt:0,deaths:0,paused:false,
   if(!Array.isArray(s.coils))s.coils=[];
   while(s.coils.length<LEVELS.length)s.coils.push(0);
   if(typeof s.deaths!=='number')s.deaths=0;
-  if(typeof s.time!=='number')s.time=0;
+  if(s.unlocked>=9)s.unlocked=10;
+  if(!Array.isArray(s.paths))s.paths=[];
+  while(s.paths.length<LEVELS.length)s.paths.push(null);
+  if(!s.marks||typeof s.marks!=='object'||Array.isArray(s.marks))s.marks={};
+  if(typeof s.looped!=='boolean')s.looped=false;
+  if(typeof s.completions!=='number')s.completions=0;
   G.save=s;
 })();
 
@@ -370,6 +380,13 @@ function loadLevel(i){
     animT:0,onPlat:null,dead:false,deadT:0,stepT:0,w:P_W,h:P_H};
   G.rec={active:false,frames:[],tick:0,beep:0};
   G.cam={x:clamp(L.spawn.x-VW/2,0,Math.max(0,L.W*TS-VW)),y:camY(L.spawn.y)};
+  // --- лиминальный слой ---
+  L.marks=(G.save.marks[i]||[]).slice(0,10);
+  L.coughed=false;
+  G.film=null;G.watch=null;G.watchDone=false;G.idleT=0;G.path=[];
+  G.filmAt=1300+((Math.random()*4200)|0);
+  G.palPlayer=G.save.looped?PAL_E:PAL_P;
+  G.palEcho=G.save.looped?PAL_P:PAL_E;
   buildCache();
   msg(def.hint,420);
 }
@@ -523,6 +540,7 @@ function step(){
       G.state='title';G.sel=0;SFX.n(.5,200,.8,.2);
     }
   }
+  if(G.tcGlitch>0)G.tcGlitch--;
   stepParts();
   JP.clear();
 }
@@ -539,6 +557,9 @@ function stepPlay(){
     if(G.winT>62)startWipe();
     return; }
   if(JP.has('ESC')){G.paused=true;return;}
+  // тихая архивная плёнка: пишем весь путь
+  if(G.lt%6===0){G.path.push({x:P.x,y:P.y,fc:P.face});
+    if(G.path.length>2400)G.path.shift();}
   const dir=(Keys.R?1:0)-(Keys.L?1:0);
   if(dir!==0){P.vx=clamp(P.vx+dir*ACC,-MAXVX,MAXVX);P.face=dir;}
   else{const f=P.ground?FRIC:.08;P.vx=Math.abs(P.vx)<f?0:P.vx-Math.sign(P.vx)*f;}
@@ -621,11 +642,14 @@ function stepPlay(){
     if(G.rec.active)stopRec(true);
     burst(P.x+4,P.y+6,'#ffd27a',20);
   }
+  stepFilm(); stepWatch();
   const tx2=P.x+P.face*26-VW/2;
   G.cam.x=lerp(G.cam.x,clamp(tx2,0,Math.max(0,L.W*TS-VW)),.1);
   G.cam.y=lerp(G.cam.y,camY(P.y),.12);
   if(G.shake>0)G.shake*=.85;
   if(G.glitch>0)G.glitch--;
+  if(L.dark&&!L.coughed&&G.lt>600&&G.lt%420===0&&Math.random()<.5){
+    L.coughed=true;SFX.cough();}
   if(G.lt%9===0&&L.lamps.length&&Math.random()<.6){
     const lp=L.lamps[(Math.random()*L.lamps.length)|0];
     G.parts.push({x:lp.x+(Math.random()-.5)*30,y:lp.y+Math.random()*40,vx:(Math.random()-.5)*.12,vy:.06+Math.random()*.05,life:120,c:'dust',s:1,g:0});}
@@ -638,19 +662,125 @@ function killPlayer(){const P=G.player;
   if(P.dead||G.winT)return;
   P.dead=true;P.deadT=0;G.deaths++;G.save.deaths++;G.glitch=50;G.shake=5;SFX.death();
   if(G.rec.active)stopRec(true);
-  burst(P.x+4,P.y+6,'#e8e2d4',30); msg('СИГНАЛ ПОТЕРЯН',80);}
+  burst(P.x+4,P.y+6,'#e8e2d4',30); msg('СИГНАЛ ПОТЕРЯН',80);
+  const i=G.lvlIdx,mm=G.save.marks[i]||(G.save.marks[i]=[]);
+  if(mm.length>=10)mm.shift();
+  mm.push([Math.round(P.x),Math.round(P.y)]);
+  saveGame();}
 function stepParts(){
   for(const p of G.parts){p.x+=p.vx;p.y+=p.vy;p.vy+=p.g||0;p.life--;}
   G.parts=G.parts.filter(function(p){return p.life>0;});}
 
+// ---------- плёнки прошлых прогонов ----------
+function stepFilm(){
+  const F=G.film;
+  if(!F){
+    if(G.lt<G.filmAt||G.watch)return;
+    const pool=[];
+    for(let k=0;k<G.save.paths.length;k++){
+      const p=G.save.paths[k];
+      if(p&&p.length>40)pool.push(p);
+    }
+    if(!pool.length)return;
+    const fr=pool[(Math.random()*pool.length)|0];
+    const P=G.player;
+    G.film={frames:fr,t:0,phase:1,stT:0,fr:'runA',fc:1,
+      x:fr[0].x,y:fr[0].y,ox:P.x-fr[0].x,oy:P.y-fr[0].y};
+    return;
+  }
+  if(F.phase===1){
+    F.t+=1/6;
+    const i=Math.floor(F.t),f=F.t-i;
+    const a=F.frames[i],b=F.frames[Math.min(i+1,F.frames.length-1)];
+    if(a&&b){F.x=lerp(a.x,b.x,f);F.y=lerp(a.y,b.y,f);F.fc=b.fc;F.fr='runA';}
+    else{F.phase=2;F.stT=0;}
+    if(F.t>=F.frames.length-1){F.phase=2;F.stT=0;}
+  } else if(F.phase===2){
+    F.stT++;
+    if(F.stT>420){F.phase=3;F.stT=0;SFX.tapeStop();}
+  } else {
+    F.stT++;
+    if(F.stT>26){G.film=null;G.tcGlitch=40;}
+  }
+}
+function drawFilm(){
+  const F=G.film;if(!F)return;
+  const P=G.player;
+  let x=F.x+F.ox,y=F.y+F.oy,al=.3;
+  if(F.phase===2){
+    F.fc=(P.x<x)?-1:1;F.fr='idle';
+    al=.2+.06*Math.sin(G.t*.03);
+  } else if(F.phase===3){
+    al=Math.max(0,1-F.stT/26)*.3;y-=F.stT*.2;x+=(Math.random()-.5)*3;
+  }
+  if(G.t%23===0)x+=1;
+  const pal={H:'#151a1e',S:'#242b31',R:'#181f24',P:'#12181c',B:'#0e1316'};
+  drawDude(ctx,x,y,F.fr||'runA',F.fc||1,pal,al);
+}
+// ---------- наблюдатель ----------
+function stepWatch(){
+  const L=G.lvl,P=G.player;
+  if(G.watch){
+    const w=G.watch;w.t++;
+    const dx=Math.abs(P.x-w.px0),dy=Math.abs(P.y-w.py0);
+    if(w.t>720||dx>TS*3.5||dy>TS*2){
+      G.watch=null;
+      SFX.slam();G.tcGlitch=36;G.glitch=Math.max(G.glitch,10);
+    }
+    return;
+  }
+  const anyKey=Keys.L||Keys.R||Keys.J||Keys.E||Keys.D;
+  if(!anyKey&&!P.dead&&!G.rec.active)G.idleT++;else G.idleT=0;
+  if(G.idleT>1700&&!G.watchDone&&G.lvlIdx>=2&&!G.film){
+    const dir=P.face<0?1:-1;
+    const ty=Math.floor((P.y+P.h)/TS)-1;
+    for(let d=10;d>=6;d--){
+      const tx=Math.floor((P.x+4)/TS)+dir*d;
+      if(tx>1&&tx<L.W-2&&ty>1&&ty<L.H-2&&
+         L.grid[ty][tx]==='.'&&L.grid[ty+1][tx]==='#'){
+        G.watch={active:true,done:false,t:0,px0:P.x,py0:P.y,
+          x:tx*TS+4,y:ty*TS+TS-P_H,face:-dir,lt0:G.lt,t0:G.t};
+        G.watchDone=true;
+        return;
+      }
+    }
+    G.idleT=1600;
+  }
+}
+function drawWatch(){
+  const w=G.watch;if(!w||!w.active)return;
+  const L=G.lvl;
+  let al=.55;
+  if(w.t<24)al=w.t/24*.55;
+  if(w.t>660)al=Math.max(0,(720-w.t)/60)*.55;
+  let x=w.x;if(G.t%31===0)x+=.8;
+  const pal=L.dark?{H:'#c3cdd0',S:'#aab6ba',R:'#8f9ba0',P:'#7d8a8f',B:'#6d7a80'}
+                  :{H:'#0a0d10',S:'#0a0d10',R:'#080b0d',P:'#080b0d',B:'#060809'};
+  drawDude(ctx,x,w.y,'idle',w.face,pal,al);
+}
+
 // ---------- переходы ----------
-function startWipe(){G.state='wipe';G.wipe=0;G.wipeDir=1;SFX.n(.4,300,1,.15);}
+function startWipe(){
 function afterWipe(){
   const L=G.lvl,i=G.lvlIdx;
   G.save.coils[i]=Math.max(G.save.coils[i]||0,L.coilsGot);
   G.save.time=(G.save.time||0)+G.lt;
+  // архивная плёнка прогона (фрагмент)
+  if(G.path.length>40){
+    let src=G.path;
+    if(src.length>300){
+      const off=((Math.random()*(src.length-300))|0);
+      src=src.slice(off,off+300);
+    }
+    const st=Math.max(1,Math.ceil(src.length/300));
+    const p=[];for(let k=0;k<src.length;k+=st)p.push(src[k]);
+    G.save.paths[i]=p;
+  }
   if(i+1>=LEVELS.length){
-    G.save.unlocked=LEVELS.length-1; saveGame();
+    G.save.unlocked=LEVELS.length-1;
+    G.save.looped=true;
+    G.save.completions=(G.save.completions||0)+1;
+    saveGame();
     G.state='final';G.finalShown=0;G.wipeDir=-1;SFX.win(); return;}
   G.save.unlocked=Math.max(G.save.unlocked,i+1); saveGame();
   G.lvlIdx=i+1; G.state='brief'; G.wipeDir=-1;
@@ -727,6 +857,19 @@ function buildCache(){
         g.fillStyle='#c8d0d4';g.fillRect(sx+1,py+9,1,4);}
     }
   }
+  // метки потерь: сектор помнит, где терялся сигнал
+  if(L.marks&&L.marks.length){
+    for(const mk of L.marks){
+      const mx=mk[0]+4,my=mk[1]+P_H;
+      for(let k=0;k<7;k++){
+        const a=hash(mx*7+k,my*13+k)*6.28,r=2+hash(k,mx+my)*5;
+        g.fillStyle='rgba(12,10,9,'+(0.16+hash(k*3,mk[0])*0.12).toFixed(3)+')';
+        g.beginPath();
+        g.arc(mx+Math.cos(a)*r*.7,my+Math.sin(a)*r*.4,1.5+hash(k,mk[1])*2.2,0,7);
+        g.fill();
+      }
+    }
+  }
   if(L.def.signs){
     g.save();
     g.font='8px "IBM Plex Mono",monospace';
@@ -787,13 +930,15 @@ function renderWorld(){
   drawFan(380+((-camX*.4)%VW+VW)%VW,168);
   ctx.save();
   ctx.translate(-Math.round(camX),-Math.round(camYv));
+  if(G.film)drawFilm();          // плёнка ЗА стенами — видна в проёмах
   ctx.drawImage(lcv,0,0);
   drawAcid(L);drawNoise(L);drawDoors(L);drawPlates(L);drawExit(L);drawPlatforms(L);drawCoils(L);
   for(const e of G.echoes)drawEcho(e);
+  drawWatch();
   const P=G.player;
   if(!P.dead){
     const fr=!P.ground?'jump':(Math.abs(P.vx)>.5?(Math.floor(P.animT/6)%2?'runA':'runB'):'idle');
-    drawDude(ctx,P.x,P.y,fr,P.face,PAL_P,1);
+    drawDude(ctx,P.x,P.y,fr,P.face,G.palPlayer,1);
     if(G.rec.active){ctx.strokeStyle='rgba(125,243,232,.55)';
       ctx.strokeRect(P.x-3.5,P.y-3.5,P_W+7,P_H+7);}
   }
@@ -936,7 +1081,7 @@ function drawEcho(e){
   let al=e.frozen?(.5+.15*Math.sin(G.t*.05)):.62;
   if(e.dieT){al=Math.max(0,1-e.dieT/22)*.7; y-=e.dieT*.3;}
   else if(e.playing&&G.t%17<2)x+=(Math.random()-.5)*2;
-  drawDude(ctx,x,y,e.fr,e.face,PAL_E,al);
+  drawDude(ctx,x,y,e.fr,e.face,G.palEcho,al);
   if(!e.dieT&&e.playing&&G.t%9<2){
     ctx.fillStyle='rgba(125,243,232,.25)';
     ctx.fillRect(x-2,y+((Math.random()*13)|0),P_W+4,1);
@@ -1033,13 +1178,16 @@ function renderHUD(){
   uctx.fillStyle=DIM;
   uctx.fillText(L.def.sub+' · СЕКТОР '+pad(G.lvlIdx+1,2)+' · '+L.def.name,14,22);
   uctx.textAlign='right';
+  let tc=G.lt;
+  if(G.watch)tc=Math.max(0,G.watch.lt0-(G.t-G.watch.t0));
+  const tcText=(G.tcGlitch>0)?'??:??:??':fmtTC(tc);
   if(G.rec.active){
     uctx.fillStyle=(G.t>>4)%2?'#ff4b3e':'rgba(255,75,62,.35)';
     uctx.fillText('● REC',W-96,22);
-    uctx.fillStyle=CYAN;uctx.fillText(fmtTC(G.lt),W-14,22);
+    uctx.fillStyle=CYAN;uctx.fillText(tcText,W-14,22);
   }else{
     uctx.fillStyle='rgba(200,205,200,.45)';uctx.fillText('▶ PLAY',W-96,22);
-    uctx.fillStyle=DIM;uctx.fillText(fmtTC(G.lt),W-14,22);
+    uctx.fillStyle=DIM;uctx.fillText(tcText,W-14,22);
   }
   uctx.textAlign='left';
   uctx.fillStyle=DIM;uctx.fillText('ЭХО',14,H-28);
@@ -1093,7 +1241,8 @@ function renderTitle(){
   uctx.fillStyle='rgba(125,243,232,.45)';uctx.fillText('ЭХО',W/2+3-gx,102);
   uctx.fillStyle='#e8e2d4';uctx.fillText('ЭХО',W/2+gx*.5,102);
   uctx.font='12px "Pixelify Sans",monospace';uctx.fillStyle=AMBER;
-  uctx.fillText('ЭКСПЕРИМЕНТ №9 · ХРОНОКАМЕРА «ПУЛЬСАР-7»',W/2,128);
+  uctx.fillText(G.save.looped?'ЗАПИСЬ №'+((G.save.completions||1)+1)+' · ПОВТОРНАЯ ДЕМОНСТРАЦИЯ'
+    :'ЭКСПЕРИМЕНТ №9 · ХРОНОКАМЕРА «ПУЛЬСАР-7»',W/2,128);
   uctx.font='9px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.5)';
   uctx.fillText('научно-исследовательский институт темпоральной безопасности',W/2,142);
   const bx=W/2-176,by=158;
@@ -1121,10 +1270,11 @@ function renderTitle(){
   }
   if((G.t>>4)%2){
     uctx.font='11px "Pixelify Sans",monospace';uctx.fillStyle='#e8e2d4';
-    uctx.fillText('[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
+    uctx.fillText(G.save.looped?'[ ENTER ] НАЧАТЬ ЗАПИСЬ №'+((G.save.completions||1)+1)
+      :'[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
   }
   uctx.font='8px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.4)';
-  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 4',W/2,H-6);
+  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 7',W/2,H-6);
   uctx.textAlign='left';
 }
 function renderBrief(){
@@ -1138,6 +1288,9 @@ function renderBrief(){
   uctx.strokeStyle='rgba(255,180,110,.3)';
   uctx.beginPath();uctx.moveTo(40,90);uctx.lineTo(W-40,90);uctx.stroke();
   uctx.fillStyle='#e6dfcf';
+  const noteText=(G.save.looped&&G.lvlIdx===0)?
+    'День 41. Объект передвигается по сектору самостоятельно. Маршрут совпадает с предыдущей записью. Слово в слово.':d.note;
+  const lines=wrap(noteText,52);
   const lines=wrap(d.note,52);
   for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],40,112+i*15);
   uctx.fillStyle=CYAN;
@@ -1168,7 +1321,10 @@ function renderFinal(){
   uctx.fillText('СОВМЕСТИМОСТЬ ЗАПИСИ С ОРИГИНАЛОМ: 100%',W/2,88);
   uctx.fillText('ВРЕМЯ НАБЛЮДЕНИЯ: '+fmtTC(time)+'   ПОТЕРИ СИГНАЛА: '+G.save.deaths,W/2,104);
   uctx.fillText('КАТУШКИ: '+coils+' / '+TOTAL_COILS,W/2,120);
-  const full='ОБЪЕКТ ВСЕГДА БЫЛ ЭХО.';
+  const comps=Math.max(1,G.save.completions||1);
+  let full=(LEVELS[LEVELS.length-1].finale)||'ОБЪЕКТ ВСЕГДА БЫЛ ЭХО.';
+  if(comps>=3)full='ПЛЁНКА №'+comps+'. ВЫХОДА НЕТ. ЕСТЬ ТОЛЬКО ЗАПИСЬ.';
+  else if(comps===2)full='ПЕТЛЯ ЗАМКНУЛАСЬ.';
   const shown=full.slice(0,Math.min(full.length,Math.floor(G.finalShown/6)));
   uctx.font='14px "Pixelify Sans",monospace';uctx.fillStyle=CYAN;
   uctx.fillText(shown,W/2,164);
