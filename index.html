@@ -33,16 +33,16 @@
   <div id="fx"></div><div id="vig"></div>
   <div id="touch">
     <div class="tb" id="tL">◄</div><div class="tb" id="tR">►</div>
-    <div class="tb" id="tJ">▲</div>
-    <div class="tb" id="tE">●</div>
+    <div class="tb" id="tJ">▲</div><div class="tb" id="tE">●</div>
     <div class="tb" id="tQ">СБРОС</div><div class="tb" id="tP">II</div>
   </div>
 </div>
 <script>
 "use strict";
-console.log('ЭХО · сборка 7 (лиминал) — если видите это, файл обновлён');
+console.log('ЭХО · сборка 8 (полная пересборка) — если видите это, файл обновлён');
 /* ============================================================
    ЭХО — эксперимент №9 · НИИ «ПУЛЬСАР» · хронокамера К-7
+   Блоки Б (10) + В (5) · лиминальный слой · петля плёнки
    ============================================================ */
 
 // ---------- константы ----------
@@ -156,9 +156,7 @@ function drawDude(g,x,y,fr,face,pal,alpha){
 }
 
 // ============================================================
-//     ПОСТРОИТЕЛЬ КАРТ (геометрия гарантируется кодом)
-//     ВНИМАНИЕ: border() — границы карты. НЕ называется frame(),
-//     чтобы не конфликтовать с главным циклом frame().
+//     ПОСТРОИТЕЛЬ КАРТ (border() — границы; НЕ frame())
 // ============================================================
 function mkGrid(H,W){const m=[];for(let y=0;y<H;y++)m.push(new Array(W).fill('.'));return m;}
 function box(m,x0,y0,x1,y1,c){
@@ -198,8 +196,8 @@ function mapL4(){const W=36,H=31,m=mkGrid(H,W);border(m);
   box(m,16,13,34,13,'#');m[12][24]='o';
   box(m,1,17,15,17,'#'); m[16][3]='o';
   box(m,16,21,34,21,'#');m[20][20]='o';
-  box(m,30,29,31,29,'~');
-  m[28][26]='F';m[28][33]='o';
+  box(m,20,29,21,29,'~');
+  m[29][26]='F';m[29][33]='o';
   return join(m);}
 
 function mapL5(){const W=72,H=14,m=mkGrid(H,W);border(m);
@@ -208,7 +206,7 @@ function mapL5(){const W=72,H=14,m=mkGrid(H,W);border(m);
   box(m,24,8,38,12,'@');
   m[12][30]='^';m[12][31]='^';m[10][28]='o';m[10][5]='o';
   m[12][52]='^';m[12][53]='^';
-  box(m,62,11,66,11,'=');m[10][64]='o';
+  box(m,62,11,66,11,'=');m[9][64]='o';
   return join(m);}
 
 function mapL6(){const W=72,H=14,m=mkGrid(H,W);border(m);
@@ -258,10 +256,85 @@ function mapL10(){const W=104,H=15,m=mkGrid(H,W);border(m);
   m[13][3]='P';m[13][10]='1';m[13][22]='2';m[13][62]='4';m[13][98]='F';
   box(m,26,9,44,13,'@');
   m[13][32]='^';m[13][33]='^';m[13][38]='^';m[13][39]='^';m[11][36]='o';
-  box(m,52,12,56,12,'=');m[11][54]='o';
+  box(m,52,12,56,12,'=');m[10][54]='o';
   m[13][70]='^';m[13][71]='^';
-  box(m,74,12,78,12,'=');m[11][76]='o';
+  box(m,74,12,78,12,'=');m[10][76]='o';
   m[13][82]='^';m[13][83]='^';
+  return join(m);}
+
+// ---------- блок В ----------
+function mapV1(){const W=30,H=22,m=mkGrid(H,W);border(m);
+  box(m,1,20,28,20,'#');
+  box(m,12,4,12,13,'#');
+  box(m,12,14,12,19,'A');
+  box(m,22,12,27,12,'#');
+  m[11][24]='1';m[11][26]='o';
+  m[19][27]='P';
+  m[19][2]='F';m[19][8]='o';
+  m[15][18]='o';
+  m[15][20]='*';
+  return join(m);}
+
+function mapV2(){const W=56,H=24,m=mkGrid(H,W);border(m);
+  box(m,1,22,10,22,'#');
+  box(m,11,22,13,22,'~');
+  box(m,14,22,20,22,'#');
+  box(m,21,22,26,22,'~');
+  box(m,21,20,24,20,'=');
+  box(m,27,22,34,22,'#');
+  m[21][30]='^';m[21][31]='^';
+  box(m,35,22,37,22,'~');
+  box(m,38,15,46,15,'#');
+  box(m,38,22,46,22,'#');
+  box(m,47,22,48,22,'#');
+  m[21][47]='^';m[21][48]='^';
+  box(m,49,22,54,22,'#');
+  m[21][3]='P';m[21][52]='F';
+  m[21][6]='o';m[19][22]='o';m[14][43]='o';m[21][50]='o';
+  m[18][36]='*';
+  return join(m);}
+
+function mapV3(){const W=72,H=16,m=mkGrid(H,W);border(m);
+  box(m,1,14,70,14,'#');
+  m[13][3]='P';m[13][8]='4';
+  box(m,14,9,14,13,'D');
+  m[13][20]='^';m[13][21]='^';
+  m[13][26]='o';
+  box(m,30,12,33,12,'=');m[11][31]='o';
+  m[13][36]='4';
+  box(m,56,9,56,13,'D');
+  m[13][47]='o';m[13][66]='F';
+  return join(m);}
+
+function mapV4(){const W=64,H=16,m=mkGrid(H,W);border(m);
+  box(m,1,14,62,14,'#');
+  m[13][3]='P';m[13][8]='1';
+  box(m,20,9,20,13,'A');
+  m[13][16]='o';
+  box(m,24,4,38,13,'@');
+  m[13][30]='^';m[13][31]='^';m[13][36]='o';
+  m[13][42]='2';
+  box(m,48,9,48,13,'B');
+  m[13][50]='o';
+  box(m,52,14,53,14,'~');
+  m[13][56]='F';
+  return join(m);}
+
+function mapV5(){const W=88,H=26,m=mkGrid(H,W);border(m);
+  box(m,1,24,86,24,'#');
+  m[23][3]='P';m[23][8]='4';
+  box(m,14,19,14,23,'D');
+  m[23][19]='^';m[23][20]='^';m[23][23]='o';
+  box(m,30,6,36,23,'@');
+  m[23][33]='^';
+  box(m,40,24,44,24,'~');
+  m[20][41]='o';
+  m[21][42]='*';
+  m[23][52]='1';m[23][55]='o';
+  box(m,58,19,58,23,'A');
+  m[23][64]='4';m[23][68]='o';
+  box(m,72,19,72,23,'D');
+  m[23][80]='F';
   return join(m);}
 
 // ---------- данные уровней ----------
@@ -291,7 +364,7 @@ const LEVELS=[
  note:'Двойной слепой опыт: объект и его записи действуют независимо. Результат — одинаков. Это беспокоит.',
  signs:[{x:4,y:6,t:'ПЛИТА-3 ЗА ШЛЮЗОМ-1'},{x:27,y:5,t:'ВВЕРХ — ПЛИТА-2'},{x:47,y:6,t:'ОБЪЕКТ НЕ ОДИН'}]},
 {name:'ИНТЕРФЕРЕНЦИЯ',sub:'СЕКТОР Б-7',date:'11.12.1986',echo:2,dark:false,map:mapL7(),
- hint:'ЗАПИШИ ВЕСЬ ПУТЬ ОТ ЖЁЛТОЙ ПЛИТЫ ДО ШЛЮЗА · ПОТОМ ПРОСТО ЖДИ У ШЛЮЗА — ЭХО НАЖМЁТ ПЛИТУ ЗА ТЕБЯ',
+ hint:'ЗАПИШИ ВЕСЬ ПУТЬ ОТ ЖЁЛТОЙ ПЛИТЫ ДО ШЛЮЗА · ПОТОМ ЖДИ У ШЛЮЗА — ЭХО НАЖМЁТ ПЛИТУ ЗА ТЕБЯ',
  note:'Шлюз-4 реагирует с задержкой. Объект — без задержки. Кто из них механизм, отчёт не уточняет.',
  signs:[{x:4,y:6,t:'ЗАПИШИ ПУТЬ ДО ШЛЮЗА'},{x:34,y:5,t:'НЕ ОСТАНАВЛИВАЙСЯ'},{x:63,y:5,t:'ШЛЮЗ-4 · 3 СЕК'}]},
 {name:'КАСКАД',sub:'СЕКТОР Б-8',date:'18.12.1986',echo:3,dark:false,map:mapL8(),
@@ -302,10 +375,30 @@ const LEVELS=[
  hint:'ОСВЕЩЕНИЕ ОТКЛЮЧЕНО · СВЕТЯТСЯ КАТУШКИ, ШЛЮЗЫ И ТЫ',
  note:'Освещение сектора отключено за неуплату. Объект светится самостоятельно. Экономия утверждена.',
  signs:[{x:2,y:8,t:'ТИХО'},{x:19,y:8,t:'ПЛИТА-1'},{x:46,y:8,t:'ПОЧТИ ВСЁ'}]},
-{name:'ЭХО',sub:'СЕКТОР Б-10',date:'31.12.1986',echo:3,dark:false,map:mapL10(),final:true,
- hint:'ФИНАЛЬНАЯ КАЛИБРОВКА · ВСЕ МЕХАНИЗМЫ СЕКТОРА',
- note:'Финальное наблюдение. Запись совпала с оригиналом до последнего кадра. Гипотеза подтверждена.',
- signs:[{x:2,y:7,t:'ОТДЕЛ №7'},{x:30,y:6,t:'ПОМЕХИ'},{x:56,y:7,t:'НЕ ПРИСЛОНЯТЬСЯ К ПРОШЛОМУ'},{x:91,y:7,t:'ЗАЛ ЭХО →'}]}
+{name:'ЭХО',sub:'СЕКТОР Б-10',date:'31.12.1986',echo:3,dark:false,map:mapL10(),
+ hint:'ВСЕ МЕХАНИЗМЫ СЕКТОРА Б · ДАЛЬШЕ — БЛОК В',
+ note:'Гипотеза подтверждена: запись неотличима от оригинала. Сектор Б закрывается на консервацию. Объект переводится в блок В.',
+ signs:[{x:2,y:7,t:'ОТДЕЛ №7'},{x:30,y:6,t:'ПОМЕХИ'},{x:56,y:7,t:'НЕ ПРИСЛОНЯТЬСЯ К ПРОШЛОМУ'},{x:91,y:7,t:'БЛОК В →'}]},
+{name:'ПОДЪЁМНИК',sub:'СЕКТОР В-1',date:'09.01.1987',echo:1,dark:false,map:mapV1(),
+ hint:'ЛИФТ ХОДИТ САМ · ЗАПИШИ ЭХО НА ПЛИТЕ ВЕРХНЕГО ЯРУСА — ОНО ДЕРЖАЕТ ШЛЮЗ ВНИЗУ',
+ note:'Институт переводится на консервацию. Объекту открыт блок В. Лифты блока В ещё работают. Пока.',
+ signs:[{x:2,y:17,t:'БЛОК В · КОНСЕРВАЦИЯ'},{x:15,y:8,t:'ШАХТА ЛИФТА'},{x:23,y:9,t:'ПЛИТА-1 → ШЛЮЗ-1'},{x:4,y:17,t:'ВЫХОД'}]},
+{name:'СВИНЦОВЫЙ ЭКРАН',sub:'СЕКТОР В-2',date:'16.01.1987',echo:0,dark:false,map:mapV2(),
+ hint:'ЗДЕСЬ НЕ РАБОТАЕТ ДАЖЕ ХРОНОКАМЕРА · ТОЛЬКО ТЫ',
+ note:'Сектор экранирован свинцом. Хронокамера пишет шум. Объект впервые за 68 дней идёт один. На ленте — только шаги.',
+ signs:[{x:2,y:19,t:'СВИНЕЦ · 40 СМ'},{x:21,y:17,t:'ПО МОСТУ'},{x:49,y:19,t:'ПОЧТИ'}]},
+{name:'СИНХРОНИЗАЦИЯ',sub:'СЕКТОР В-3',date:'23.01.1987',echo:1,dark:false,map:mapV3(),
+ hint:'ДО ВТОРОГО ШЛЮЗА НЕ ДОБЕЖАТЬ ЗА 3 СЕКУНДЫ · ЗАПИШИ ПУТЬ ОТ ПЛИТЫ ДО ШЛЮЗА И ЖДИ У ДВЕРИ',
+ note:'Два импульсных шлюза на одном канале. Диспетчер Светлова уволилась посменно. Вместе с напарником.',
+ signs:[{x:2,y:10,t:'КАНАЛ 4 · ШЛЮЗА ДВА'},{x:30,y:9,t:'ИМПУЛЬС'},{x:50,y:10,t:'ЭХО ЖМЁТ · ТЫ ЖДЁШЬ'}]},
+{name:'СТАТИКА',sub:'СЕКТОР В-4',date:'30.01.1987',echo:2,dark:true,map:mapV4(),
+ hint:'СКВОЗЬ СТАТИКУ ЭХО НЕ ПРОЙДЁТ · ЗАПИСЫВАЙ ДО И ПОСЛЕ',
+ note:'Запись от 30.01 отсутствует. На ленте — статика, шаги и чей-то кашель. Кашель не наш.',
+ signs:[{x:2,y:10,t:'ТИХО'},{x:27,y:11,t:'СТАТИКА'},{x:44,y:10,t:'ЭХО-2'}]},
+{name:'ПОСЛЕДНЯЯ ПЛЁНКА',sub:'СЕКТОР В-5',date:'07.02.1987',echo:3,dark:false,map:mapV5(),finale:'НАБЛЮДАТЕЛЬ ТОЖЕ БЫЛ ЗАПИСЬЮ.',
+ hint:'КАНАЛОВ: 3 · ВСЁ, ЧТО ВЫ УМЕЕТЕ',
+ note:'Лента №9-К. Дальше записей нет. Есть одиннадцать минут шагов и звук закрывающейся двери.',
+ signs:[{x:2,y:20,t:'ПОСЛЕДНЯЯ ПЛЁНКА'},{x:31,y:19,t:'СТАТИКА'},{x:53,y:20,t:'ДЕРЖИТ ЭХО-1'},{x:66,y:20,t:'ИМПУЛЬС'}]}
 ];
 const TOTAL_COILS=LEVELS.reduce(function(a,l){return a+l.map.join('').split('o').length-1;},0);
 
@@ -323,6 +416,7 @@ const G={state:'title',lvlIdx:0,sel:0,t:0,lt:0,deaths:0,paused:false,
   if(!Array.isArray(s.coils))s.coils=[];
   while(s.coils.length<LEVELS.length)s.coils.push(0);
   if(typeof s.deaths!=='number')s.deaths=0;
+  if(typeof s.time!=='number')s.time=0;
   if(s.unlocked>=9)s.unlocked=10;
   if(!Array.isArray(s.paths))s.paths=[];
   while(s.paths.length<LEVELS.length)s.paths.push(null);
@@ -364,7 +458,6 @@ function loadLevel(i){
     let y=p.cy;
     while(y>0&&grid[y-1][p.cx]!=='#')y--;
     p.rope=(p.cy-y)*TS;});
-  // лампы над этажами
   const lstep=def.dark?13:6;
   for(let x=3;x<W-2;x+=lstep+((hash(x,7)*3)|0)){
     let last=1e9;
@@ -451,6 +544,7 @@ function entNoise(x,y,w,h){const L=G.lvl;
 // ---------- запись и эхо ----------
 function startRec(){
   const P=G.player,L=G.lvl;
+  if(!L.echoLimit){msg('СЕКТОР ЭКРАНИРОВАН · ХРОНОКАМЕРА БЕССИЛЬНА',150);SFX.deny();return;}
   if(G.echoes.length>=L.echoLimit){msg('КАНАЛЫ ЭХО ЗАНЯТЫ · Q — ОЧИСТИТЬ',150);SFX.deny();return;}
   if(entNoise(P.x,P.y,P_W,P_H)){msg('ПОМЕХИ: ЗДЕСЬ НЕ ЗАПИСЫВАЕТСЯ',150);SFX.deny();return;}
   G.rec={active:true,frames:[],tick:0,beep:0}; SFX.recOn();
@@ -533,7 +627,7 @@ function step(){
   }
   else if(G.state==='final'){
     G.finalShown++;
-    const full='ОБЪЕКТ ВСЕГДА БЫЛ ЭХО.';
+    const full=(LEVELS[LEVELS.length-1].finale)||'ОБЪЕКТ ВСЕГДА БЫЛ ЭХО.';
     const shown=Math.min(full.length,Math.floor(G.finalShown/6));
     if(G.finalShown%6===0&&shown>0&&shown<full.length)SFX.recBeep();
     if(shown>=full.length&&JP.has('OK')&&G.wipe===0){
@@ -717,6 +811,7 @@ function drawFilm(){
   const pal={H:'#151a1e',S:'#242b31',R:'#181f24',P:'#12181c',B:'#0e1316'};
   drawDude(ctx,x,y,F.fr||'runA',F.fc||1,pal,al);
 }
+
 // ---------- наблюдатель ----------
 function stepWatch(){
   const L=G.lvl,P=G.player;
@@ -760,7 +855,7 @@ function drawWatch(){
 }
 
 // ---------- переходы ----------
-function startWipe(){
+function startWipe(){G.state='wipe';G.wipe=0;G.wipeDir=1;SFX.n(.4,300,1,.15);}
 function afterWipe(){
   const L=G.lvl,i=G.lvlIdx;
   G.save.coils[i]=Math.max(G.save.coils[i]||0,L.coilsGot);
@@ -1108,6 +1203,7 @@ function drawLight(camX,camYv){
   const P=G.player;
   if(P&&!P.dead)cut(P.x+4,P.y+6,L.dark?54:62,.95);
   for(const e of G.echoes)if(!e.dieT)cut(e.x+4,e.y+6,40,.9);
+  if(G.watch&&G.watch.active)cut(G.watch.x+4,G.watch.y+6,46,.9);
   for(const c of L.coils)if(!c.taken)cut(c.x*TS+8,c.y*TS+8,24,.8);
   for(const pl of L.plates)cut(pl.x*TS+8,pl.y*TS+10,20,.7);
   for(const d of L.doors)cut(d.x*TS+8,d.y0*TS-6,18,.7);
@@ -1274,7 +1370,7 @@ function renderTitle(){
       :'[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
   }
   uctx.font='8px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.4)';
-  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 7',W/2,H-6);
+  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 8',W/2,H-6);
   uctx.textAlign='left';
 }
 function renderBrief(){
@@ -1291,7 +1387,6 @@ function renderBrief(){
   const noteText=(G.save.looped&&G.lvlIdx===0)?
     'День 41. Объект передвигается по сектору самостоятельно. Маршрут совпадает с предыдущей записью. Слово в слово.':d.note;
   const lines=wrap(noteText,52);
-  const lines=wrap(d.note,52);
   for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],40,112+i*15);
   uctx.fillStyle=CYAN;
   uctx.fillText('ЦЕЛЬ: достичь выхода. каналов эхо: '+d.echo,40,112+lines.length*15+14);
