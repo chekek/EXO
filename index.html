@@ -39,10 +39,10 @@
 </div>
 <script>
 "use strict";
-console.log('ЭХО · сборка 8 (полная пересборка) — если видите это, файл обновлён');
+console.log('ЭХО · сборка 9 (warp-секторы) — если видите это, файл обновлён');
 /* ============================================================
    ЭХО — эксперимент №9 · НИИ «ПУЛЬСАР» · хронокамера К-7
-   Блоки Б (10) + В (5) · лиминальный слой · петля плёнки
+   Блоки Б (10) + В (5) + 4 warp-сектора вне плана
    ============================================================ */
 
 // ---------- константы ----------
@@ -337,6 +337,31 @@ function mapV5(){const W=88,H=26,m=mkGrid(H,W);border(m);
   m[23][80]='F';
   return join(m);}
 
+// ---------- warp-секторы ----------
+function mapW1(){const W=80,H=14,m=mkGrid(H,W);border(m);
+  box(m,10,11,14,12,'#');box(m,30,11,34,12,'#');box(m,50,11,54,12,'#');
+  m[12][3]='P';m[12][70]='F';
+  m[12][20]='o';m[12][45]='o';m[10][62]='o';m[12][62]='o';
+  return join(m);}
+
+function mapW3(){const W=76,H=13,m=mkGrid(H,W);border(m);
+  box(m,1,1,10,1,'#');
+  box(m,16,1,24,1,'#');
+  box(m,30,1,38,1,'#');
+  box(m,44,1,52,1,'#');
+  box(m,58,1,74,1,'#');
+  m[2][3]='P';m[2][70]='F';
+  m[2][7]='o';m[2][19]='o';m[2][33]='o';m[2][47]='o';m[2][62]='o';m[2][66]='o';
+  m[4][26]='o';m[4][27]='o';
+  m[4][40]='o';m[4][41]='o';
+  m[4][54]='o';m[4][55]='o';
+  return join(m);}
+
+function mapW4(){const W=96,H=10,m=mkGrid(H,W);border(m);
+  for(let s=0;s<8;s++)m[8][s*12+9]='o';
+  m[8][2]='P';
+  return join(m);}
+
 // ---------- данные уровней ----------
 const LEVELS=[
 {name:'КАЛИБРОВКА',sub:'СЕКТОР Б-1',date:'04.11.1986',echo:1,dark:false,map:mapL1(),
@@ -380,7 +405,7 @@ const LEVELS=[
  note:'Гипотеза подтверждена: запись неотличима от оригинала. Сектор Б закрывается на консервацию. Объект переводится в блок В.',
  signs:[{x:2,y:7,t:'ОТДЕЛ №7'},{x:30,y:6,t:'ПОМЕХИ'},{x:56,y:7,t:'НЕ ПРИСЛОНЯТЬСЯ К ПРОШЛОМУ'},{x:91,y:7,t:'БЛОК В →'}]},
 {name:'ПОДЪЁМНИК',sub:'СЕКТОР В-1',date:'09.01.1987',echo:1,dark:false,map:mapV1(),
- hint:'ЛИФТ ХОДИТ САМ · ЗАПИШИ ЭХО НА ПЛИТЕ ВЕРХНЕГО ЯРУСА — ОНО ДЕРЖАЕТ ШЛЮЗ ВНИЗУ',
+ hint:'ЛИФТ ХОДИТ САМ · ЗАПИШИ ЭХО НА ПЛИТЕ ВЕРХНЕГО ЯРУСА — ОНО ДЕРЖИТ ШЛЮЗ ВНИЗУ',
  note:'Институт переводится на консервацию. Объекту открыт блок В. Лифты блока В ещё работают. Пока.',
  signs:[{x:2,y:17,t:'БЛОК В · КОНСЕРВАЦИЯ'},{x:15,y:8,t:'ШАХТА ЛИФТА'},{x:23,y:9,t:'ПЛИТА-1 → ШЛЮЗ-1'},{x:4,y:17,t:'ВЫХОД'}]},
 {name:'СВИНЦОВЫЙ ЭКРАН',sub:'СЕКТОР В-2',date:'16.01.1987',echo:0,dark:false,map:mapV2(),
@@ -400,14 +425,45 @@ const LEVELS=[
  note:'Лента №9-К. Дальше записей нет. Есть одиннадцать минут шагов и звук закрывающейся двери.',
  signs:[{x:2,y:20,t:'ПОСЛЕДНЯЯ ПЛЁНКА'},{x:31,y:19,t:'СТАТИКА'},{x:53,y:20,t:'ДЕРЖИТ ЭХО-1'},{x:66,y:20,t:'ИМПУЛЬС'}]}
 ];
-const TOTAL_COILS=LEVELS.reduce(function(a,l){return a+l.map.join('').split('o').length-1;},0);
+
+// ---------- warp-секторы (вне плана института) ----------
+const MAIN_COUNT=LEVELS.length;   // 15 основных; дальше — warp
+LEVELS.push(
+{name:'РАЗМНОЖЕНИЕ',sub:'СЕКТОР Н/Д',date:'--.--.----',echo:0,dark:false,map:mapW1(),clones:14,
+ hint:'МАТЕРИАЛ НЕ КЛАССИФИЦИРОВАН',
+ note:'Фрагмент без сопроводительного листа. На кадре — сорок два объекта. Один из них исходный. Остальные не учтены.',
+ signs:[{x:4,y:9,t:'НЕ Я'},{x:31,y:7,t:'НЕ Я'},{x:56,y:9,t:'НЕ Я'}]},
+{name:'ЗЕРКАЛО',sub:'СЕКТОР Б-1 (?)',date:'04.11.1986',echo:1,dark:false,map:mapL1(),mirror:true,
+ hint:'ПЛЁНКА ПРОЯВЛЕНА С ОБРАТНОЙ СТОРОНЫ',
+ note:'Та же плёнка Б-1, снятая с обратной стороны эмульсии. Лаборатория настаивает: так бывает. Комиссия — нет.',
+ signs:[{x:2,y:6,t:'ДВИЖЕНИЕ: A · D'},{x:9,y:4,t:'ПРЫЖОК: SPACE'},{x:26,y:7,t:'НЕ НАСТУПАТЬ'}]},
+{name:'ПОТОЛОК',sub:'СЕКТОР Н/Д',date:'--.--.----',echo:0,dark:false,map:mapW3(),flip:true,
+ hint:'ГРАВИТАЦИОННАЯ АНОМАЛИЯ · «ВНИЗ» — ЭТО «ВВЕРХ»',
+ note:'Объект перемещается по потолку. Протокол наблюдения также перевёрнут. Перепечатано как есть.',
+ signs:[{x:2,y:5,t:'ВНИЗ НЕ СМОТРЕТЬ'},{x:33,y:5,t:'ДЫХАТЬ РОВНО'},{x:60,y:5,t:'ПОЧТИ'}]},
+{name:'КОРИДОР',sub:'СЕКТОР −1',date:'∞',echo:0,dark:true,map:mapW4(),endless:true,
+ hint:'СЕКТОРА НЕТ НА ПЛАНЕ · ВЫХОД ПОЯВИТСЯ',
+ note:'Сектор не значится на планах института. Коридор одинаков в обе стороны. Комиссия рекомендует не считать обороты.',
+ signs:[{x:2,y:6,t:'КОРИДОР'},{x:14,y:6,t:'КОРИДОР'},{x:26,y:6,t:'КОРИДОР'},{x:38,y:6,t:'КОРИДОР'}]}
+);
+
+// тайные проходы (в тайлах; для игрока — никак не обозначены)
+LEVELS[0].warps=[{x:51,y:10,type:'wall',to:16}];   // Б-1: стена за выходом → ЗЕРКАЛО
+LEVELS[3].warps=[{x:20,y:29,type:'acid',to:17}];   // Б-4: левый край лужи → ПОТОЛОК
+LEVELS[5].warps=[{x:71,y:12,type:'wall',to:15}];   // Б-6: стена за выходом → РАЗМНОЖЕНИЕ
+LEVELS[8].warps=[{x:63,y:12,type:'wall',to:18}];   // Б-9: стена в темноте → КОРИДОР
+LEVELS[11].warps=[{x:26,y:22,type:'acid',to:15}];  // В-2: правый край первой лужи → РАЗМНОЖЕНИЕ
+LEVELS[13].warps=[{x:52,y:14,type:'acid',to:18}];  // В-4: левая кислота у выхода → КОРИДОР
+
+const TOTAL_COILS=LEVELS.slice(0,MAIN_COUNT).reduce(function(a,l){return a+l.map.join('').split('o').length-1;},0);
 
 // ---------- глобальное состояние ----------
 const G={state:'title',lvlIdx:0,sel:0,t:0,lt:0,deaths:0,paused:false,
   save:null,lvl:null,echoes:[],parts:[],msg:null,msgT:0,
   wipe:0,wipeDir:0,shake:0,glitch:0,winT:0,finalShown:0,player:null,rec:null,cam:{x:0,y:0},
   film:null,filmAt:0,watch:null,watchDone:false,idleT:0,path:[],tcGlitch:0,
-  palPlayer:null,palEcho:null};
+  palPlayer:null,palEcho:null,
+  warpTo:null,retIdx:null,mirror:false,flipG:false,endless:false,wraps:0,clones:[],cloneQueue:0};
 (function(){
   let s=null;
   try{s=JSON.parse(localStorage.getItem('echo9')||'null');}catch(e){s=null;}
@@ -480,6 +536,16 @@ function loadLevel(i){
   G.filmAt=1300+((Math.random()*4200)|0);
   G.palPlayer=G.save.looped?PAL_E:PAL_P;
   G.palEcho=G.save.looped?PAL_P:PAL_E;
+  // --- warp-слой ---
+  L.fakes={};
+  G.mirror=!!def.mirror;G.flipG=!!def.flip;G.endless=!!def.endless;
+  G.wraps=0;G.clones=[];G.cloneQueue=def.clones||0;
+  G.warpTo=null;
+  if(def.warps)for(const w of def.warps)L.fakes[w.x+','+w.y]={to:w.to,type:w.type};
+  if(def.endless){
+    L.lamps=[];
+    for(let s=0;s<8;s++)L.lamps.push({x:(s*12+6)*TS+8,y:24,red:s===4,seed:.5});
+  }
   buildCache();
   msg(def.hint,420);
 }
@@ -493,6 +559,7 @@ function solidT(tx,ty){const L=G.lvl;
   if(tx<0||tx>=L.W)return '#';
   if(ty<0)return '#';
   if(ty>=L.H)return '.';
+  if(L.fakes&&L.fakes[tx+','+ty])return '.';   // фальш-стена: проходима
   return L.grid[ty][tx]==='#'?'#':'.';}
 
 const overlap=function(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;};
@@ -519,9 +586,12 @@ function tileCollide(e){
     for(let tx=x0;tx<=x1;tx++){
       const g=(ty>=0&&ty<L.H)?L.grid[ty][tx]:null;
       if(solidT(tx,ty)==='#'||(prevB<=ty*TS+0.01&&g==='=')){
-        e.y=ty*TS-e.h; e.vy=0; e.ground=true; break; }}}
+        e.y=ty*TS-e.h; e.vy=0; e.ground=!G.flipG; break; }}}
   else if(e.vy<0){const ty=Math.floor(e.y/TS);
-    for(let tx=x0;tx<=x1;tx++)if(solidT(tx,ty)==='#'){e.y=(ty+1)*TS+0.01;e.vy=0;break;}}
+    for(let tx=x0;tx<=x1;tx++)if(solidT(tx,ty)==='#'){
+      e.y=(ty+1)*TS+0.01;e.vy=0;
+      if(G.flipG)e.ground=true;   // перевёрнутая гравитация: потолок — это пол
+      break;}}
   for(const d of L.doors){const r=doorRect(d);
     if(r.h>0&&overlap(e,r)){
       if(e.vy>=0&&e.y+e.h/2<r.y+r.h/2){e.y=r.y-e.h;e.vy=0;e.ground=true;}
@@ -627,7 +697,7 @@ function step(){
   }
   else if(G.state==='final'){
     G.finalShown++;
-    const full=(LEVELS[LEVELS.length-1].finale)||'ОБЪЕКТ ВСЕГДА БЫЛ ЭХО.';
+    const full=(LEVELS[MAIN_COUNT-1].finale)||'ОБЪЕКТ ВСЕГДА БЫЛ ЭХО.';
     const shown=Math.min(full.length,Math.floor(G.finalShown/6));
     if(G.finalShown%6===0&&shown>0&&shown<full.length)SFX.recBeep();
     if(shown>=full.length&&JP.has('OK')&&G.wipe===0){
@@ -654,14 +724,16 @@ function stepPlay(){
   // тихая архивная плёнка: пишем весь путь
   if(G.lt%6===0){G.path.push({x:P.x,y:P.y,fc:P.face});
     if(G.path.length>2400)G.path.shift();}
-  const dir=(Keys.R?1:0)-(Keys.L?1:0);
+  // движение (в ЗЕРКАЛЕ управление отражено)
+  let dir=(Keys.R?1:0)-(Keys.L?1:0);
+  if(G.mirror)dir=-dir;
   if(dir!==0){P.vx=clamp(P.vx+dir*ACC,-MAXVX,MAXVX);P.face=dir;}
   else{const f=P.ground?FRIC:.08;P.vx=Math.abs(P.vx)<f?0:P.vx-Math.sign(P.vx)*f;}
   if(P.ground)P.coyote=8;else if(P.coyote>0)P.coyote--;
   if(JP.has('J'))P.jbuf=8;else if(P.jbuf>0)P.jbuf--;
-  if(P.jbuf>0&&P.coyote>0){P.vy=JUMPV;P.coyote=0;P.jbuf=0;SFX.jump();}
-  if(!Keys.J&&P.vy<-2)P.vy=-2;
-  P.vy=Math.min(P.vy+GRAV,MAXFALL);
+  if(P.jbuf>0&&P.coyote>0){P.vy=G.flipG?5.9:JUMPV;P.coyote=0;P.jbuf=0;SFX.jump();}
+  if(!Keys.J&&(G.flipG?P.vy>2:P.vy<-2))P.vy=G.flipG?2:-2;
+  P.vy=G.flipG?Math.max(P.vy-GRAV,-MAXFALL):Math.min(P.vy+GRAV,MAXFALL);
   for(const p of L.platforms){
     p.ppy=p.py;
     p.py=p.cy*TS+Math.sin(G.lt*0.02+p.ph)*TS*3;
@@ -672,7 +744,7 @@ function stepPlay(){
       P.x+=p.dx;P.y+=p.dy;} else P.onPlat=null;}
   const wasG=P.ground, wasVy=P.vy;
   tileCollide(P);
-  if(P.ground&&!wasG&&wasVy>2.5){SFX.land();G.shake=Math.min(3,wasVy*.5);
+  if(P.ground&&!wasG&&Math.abs(wasVy)>2.5){SFX.land();G.shake=Math.min(3,Math.abs(wasVy)*.5);
     for(let i=0;i<5;i++)G.parts.push({x:P.x+Math.random()*8,y:P.y+P_H,vx:(Math.random()-.5),vy:-Math.random()*.5,life:14,c:'#8a8578',s:1,g:.02});}
   if(P.ground&&Math.abs(P.vx)>.6){P.stepT++;if(P.stepT>13){P.stepT=0;SFX.step();}}
   P.animT+=Math.abs(P.vx);
@@ -728,7 +800,10 @@ function stepPlay(){
     for(const s of L.spikes){if(overlap(bx,{x:s.x*TS+2,y:s.y*TS+6,w:12,h:10})){killPlayer();break;}}
     if(!P.dead){
       const tx=Math.floor((P.x+4)/TS),ty=Math.floor((P.y+P_H-2)/TS);
-      if(ty>=0&&ty<L.H&&tx>=0&&tx<L.W&&L.grid[ty][tx]==='~')killPlayer();
+      if(ty>=0&&ty<L.H&&tx>=0&&tx<L.W&&L.grid[ty][tx]==='~'){
+        const fk=L.fakes?L.fakes[tx+','+ty]:null;
+        if(fk)enterWarp(fk.to);else killPlayer();
+      }
     }
   }
   if(L.exit&&!G.winT&&overlap({x:P.x,y:P.y,w:P_W,h:P_H},{x:L.exit.x*TS-4,y:L.exit.y*TS-8,w:24,h:24})){
@@ -736,6 +811,14 @@ function stepPlay(){
     if(G.rec.active)stopRec(true);
     burst(P.x+4,P.y+6,'#ffd27a',20);
   }
+  // ---- warp-слой ----
+  if(!P.dead&&!G.winT&&L.fakes){
+    const key=Math.floor((P.x+4)/TS)+','+Math.floor((P.y+6)/TS);
+    const f=L.fakes[key];
+    if(f&&f.type==='wall'){enterWarp(f.to);return;}
+  }
+  stepClones();
+  stepEndless();
   stepFilm(); stepWatch();
   const tx2=P.x+P.face*26-VW/2;
   G.cam.x=lerp(G.cam.x,clamp(tx2,0,Math.max(0,L.W*TS-VW)),.1);
@@ -854,13 +937,82 @@ function drawWatch(){
   drawDude(ctx,x,w.y,'idle',w.face,pal,al);
 }
 
+// ---------- клоны (РАЗМНОЖЕНИЕ) ----------
+function stepClones(){
+  const P=G.player;
+  if(G.cloneQueue>0&&G.t%3===0){
+    G.cloneQueue--;
+    G.clones.push({x:P.x,y:P.y-2,vx:(Math.random()<.5?-1:1)*(1+Math.random()*1.7),
+      vy:-3-Math.random()*3.5,face:1,ground:false,coyote:0,jbuf:0,animT:0,
+      onPlat:null,dead:false,deadT:0,stepT:0,w:P_W,h:P_H,
+      ai:20+Math.random()*80,mode:'run',alpha:.7+Math.random()*.3,
+      pal:Math.random()<.18?PAL_E:null});
+    SFX.step();
+  }
+  for(const c of G.clones){
+    c.ai--;
+    if(c.ai<=0){
+      const r=Math.random();
+      if(r<.45){c.mode='run';c.vx=(Math.random()<.5?-1:1)*(1+Math.random()*.9);}
+      else if(r<.72){c.mode='jump';c.vx=(Math.random()<.5?-1:1)*1.4;
+        if(c.ground)c.vy=JUMPV*.95;}
+      else if(r<.87){c.mode='idle';c.vx=0;}
+      else{c.mode='watch';c.vx=0;}
+      c.ai=30+Math.random()*110;
+    }
+    if(c.mode==='watch')c.face=(P.x>c.x)?1:-1;
+    else if(Math.abs(c.vx)>.1)c.face=c.vx>0?1:-1;
+    c.vy=Math.min(c.vy+GRAV,MAXFALL);
+    tileCollide(c);
+    c.animT+=Math.abs(c.vx);
+  }
+}
+function drawClones(){
+  if(!G.clones||!G.clones.length)return;
+  for(const c of G.clones){
+    let x=c.x;
+    if(Math.random()<.03)x+=(Math.random()-.5)*1.5;
+    const fr=!c.ground?'jump':(Math.abs(c.vx)>.5?(Math.floor(c.animT/6)%2?'runA':'runB'):'idle');
+    drawDude(ctx,x,c.y,fr,c.face,c.pal||PAL_P,c.alpha);
+  }
+}
+
+// ---------- бесконечный коридор ----------
+function stepEndless(){
+  const L=G.lvl;if(!L.endless)return;
+  const P=G.player,seg=12*TS;
+  if(P.x>(L.W-3)*TS){
+    P.x-=seg;
+    G.cam.x=clamp(G.cam.x-seg,0,Math.max(0,L.W*TS-VW));
+    G.wraps++;
+  } else if(P.x<2*TS){
+    P.x+=seg;
+    G.cam.x=clamp(G.cam.x+seg,0,Math.max(0,L.W*TS-VW));
+    G.wraps++;
+  }
+  if(!L.exit&&G.wraps>=3){
+    const s=(Math.random()*8)|0;
+    L.exit={x:s*12+5,y:8};
+    SFX.plate();
+  }
+}
+
+// ---------- варпы ----------
+function enterWarp(to){
+  if(G.warpTo!=null||G.winT)return;
+  G.warpTo=to; G.retIdx=G.lvlIdx;
+  G.glitch=Math.max(G.glitch,60);G.shake=6;
+  SFX.echoDie();SFX.slam();SFX.tapeStop();
+  msg('СИГНАЛ ПОТЕРЯН... НАЙДЕН',120);
+  startWipe();
+}
+
 // ---------- переходы ----------
 function startWipe(){G.state='wipe';G.wipe=0;G.wipeDir=1;SFX.n(.4,300,1,.15);}
 function afterWipe(){
   const L=G.lvl,i=G.lvlIdx;
   G.save.coils[i]=Math.max(G.save.coils[i]||0,L.coilsGot);
   G.save.time=(G.save.time||0)+G.lt;
-  // архивная плёнка прогона (фрагмент)
   if(G.path.length>40){
     let src=G.path;
     if(src.length>300){
@@ -871,8 +1023,28 @@ function afterWipe(){
     const p=[];for(let k=0;k<src.length;k+=st)p.push(src[k]);
     G.save.paths[i]=p;
   }
-  if(i+1>=LEVELS.length){
-    G.save.unlocked=LEVELS.length-1;
+  // выпали в warp-сектор
+  if(G.warpTo!=null){
+    G.retIdx=(G.retIdx==null)?0:G.retIdx;
+    G.lvlIdx=G.warpTo;
+    loadLevel(G.lvlIdx);
+    saveGame();
+    G.state='play';G.wipe=1;G.wipeDir=-1;
+    return;
+  }
+  // вернулись из warp-сектора — в исходный, с чистого листа
+  if(i>=MAIN_COUNT){
+    const back=(G.retIdx==null)?0:G.retIdx;
+    G.retIdx=null;
+    G.lvlIdx=back;
+    loadLevel(G.lvlIdx);
+    saveGame();
+    G.state='play';G.wipe=1;G.wipeDir=-1;
+    msg('ЗАПИСЬ ВОССТАНОВЛЕНА · СЕКТОР '+pad(back+1,2),150);
+    return;
+  }
+  if(i+1>=MAIN_COUNT){
+    G.save.unlocked=MAIN_COUNT-1;
     G.save.looped=true;
     G.save.completions=(G.save.completions||0)+1;
     saveGame();
@@ -1024,11 +1196,13 @@ function renderWorld(){
   drawFan(120+((-camX*.4)%VW+VW)%VW,86);
   drawFan(380+((-camX*.4)%VW+VW)%VW,168);
   ctx.save();
+  if(G.mirror){ctx.translate(VW,0);ctx.scale(-1,1);}   // ЗЕРКАЛО
   ctx.translate(-Math.round(camX),-Math.round(camYv));
   if(G.film)drawFilm();          // плёнка ЗА стенами — видна в проёмах
   ctx.drawImage(lcv,0,0);
   drawAcid(L);drawNoise(L);drawDoors(L);drawPlates(L);drawExit(L);drawPlatforms(L);drawCoils(L);
   for(const e of G.echoes)drawEcho(e);
+  drawClones();
   drawWatch();
   const P=G.player;
   if(!P.dead){
@@ -1208,6 +1382,8 @@ function drawLight(camX,camYv){
   for(const pl of L.plates)cut(pl.x*TS+8,pl.y*TS+10,20,.7);
   for(const d of L.doors)cut(d.x*TS+8,d.y0*TS-6,18,.7);
   if(L.exit)cut(L.exit.x*TS+8,L.exit.y*TS,32,.85);
+  ctx.save();
+  if(G.mirror){ctx.translate(VW,0);ctx.scale(-1,1);}   // свет отражается вместе с миром
   ctx.drawImage(lightCv,0,0);
   ctx.globalCompositeOperation='lighter';
   const glow=function(wx,wy,r,c){
@@ -1226,9 +1402,11 @@ function drawLight(camX,camYv){
   for(const c of L.coils)if(!c.taken)glow(c.x*TS+8,c.y*TS+8,14,'rgba(255,200,90,.22)');
   for(const e of G.echoes)if(!e.dieT)glow(e.x+4,e.y+6,16,'rgba(110,240,230,.15)');
   if(L.exit)glow(L.exit.x*TS+8,L.exit.y*TS,18,'rgba(120,240,140,.2)');
+  ctx.restore();
   ctx.globalCompositeOperation='source-over';
 }
 function renderDust(camX,camYv){
+  if(G.mirror)return;   // в отражении нет пыли
   ctx.fillStyle='rgba(210,215,205,.22)';
   for(const p of G.parts)if(p.c==='dust')ctx.fillRect(p.x-camX,p.y-camYv,1,1);
 }
@@ -1272,7 +1450,8 @@ function renderHUD(){
   uctx.textAlign='left';
   uctx.font='11px "Pixelify Sans",monospace';
   uctx.fillStyle=DIM;
-  uctx.fillText(L.def.sub+' · СЕКТОР '+pad(G.lvlIdx+1,2)+' · '+L.def.name,14,22);
+  const sector=(G.lvlIdx<MAIN_COUNT)?' · СЕКТОР '+pad(G.lvlIdx+1,2):'';
+  uctx.fillText(L.def.sub+sector+' · '+L.def.name,14,22);
   uctx.textAlign='right';
   let tc=G.lt;
   if(G.watch)tc=Math.max(0,G.watch.lt0-(G.t-G.watch.t0));
@@ -1370,7 +1549,7 @@ function renderTitle(){
       :'[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
   }
   uctx.font='8px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.4)';
-  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 8',W/2,H-6);
+  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 9',W/2,H-6);
   uctx.textAlign='left';
 }
 function renderBrief(){
@@ -1417,7 +1596,7 @@ function renderFinal(){
   uctx.fillText('ВРЕМЯ НАБЛЮДЕНИЯ: '+fmtTC(time)+'   ПОТЕРИ СИГНАЛА: '+G.save.deaths,W/2,104);
   uctx.fillText('КАТУШКИ: '+coils+' / '+TOTAL_COILS,W/2,120);
   const comps=Math.max(1,G.save.completions||1);
-  let full=(LEVELS[LEVELS.length-1].finale)||'ОБЪЕКТ ВСЕГДА БЫЛ ЭХО.';
+  let full=(LEVELS[MAIN_COUNT-1].finale)||'ОБЪЕКТ ВСЕГДА БЫЛ ЭХО.';
   if(comps>=3)full='ПЛЁНКА №'+comps+'. ВЫХОДА НЕТ. ЕСТЬ ТОЛЬКО ЗАПИСЬ.';
   else if(comps===2)full='ПЕТЛЯ ЗАМКНУЛАСЬ.';
   const shown=full.slice(0,Math.min(full.length,Math.floor(G.finalShown/6)));
