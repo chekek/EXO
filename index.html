@@ -30,12 +30,24 @@
   #tJ{right:14px;bottom:22px;width:68px;height:68px}
   #tE{right:96px;bottom:22px}#tQ{right:96px;bottom:92px;width:46px;height:46px;font-size:10px}
   #tP{right:16px;top:14px;width:38px;height:38px;font-size:13px}
-  /* заставка при вертикальной ориентации (только телефон) */
   #rot{position:fixed;inset:0;z-index:20;display:none;background:#040506;color:#ffb46b;
     font-family:"IBM Plex Mono",monospace;flex-direction:column;align-items:center;
     justify-content:center;text-align:center;letter-spacing:2px;font-size:15px;line-height:2.2}
   #rot span{font-size:10px;letter-spacing:1px;opacity:.55}
   @media (orientation:portrait) and (pointer:coarse){#rot{display:flex}}
+  #boot{position:fixed;inset:0;z-index:30;display:none;background:#040506;
+    flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  #boot h1{font-family:"Pixelify Sans",monospace;font-size:54px;color:#e8e2d4;
+    margin:0 0 8px;letter-spacing:6px}
+  #boot .s{font-size:9px;letter-spacing:2px;color:rgba(200,205,200,.5);margin-bottom:36px}
+  #bootBtn{font-family:"Pixelify Sans",monospace;font-size:16px;color:#ffb46b;
+    background:rgba(255,180,110,.06);border:1px solid rgba(255,180,110,.6);
+    padding:14px 32px;border-radius:4px;letter-spacing:2px;cursor:pointer;
+    -webkit-appearance:none;appearance:none}
+  #bootBtn:active{background:rgba(255,180,110,.22)}
+  #boot .h{font-size:8px;color:rgba(200,205,200,.35);margin-top:18px;letter-spacing:1px}
+  #boot.on{display:flex}
+  @media (orientation:portrait) and (pointer:coarse){#boot.on{display:none}}
 </style>
 </head>
 <body>
@@ -50,14 +62,19 @@
   </div>
 </div>
 <div id="rot">⟳ ПОВЕРНИТЕ УСТРОЙСТВО<span>протокол наблюдения ведётся только по горизонтали</span></div>
+<div id="boot">
+  <h1>ЭХО</h1>
+  <div class="s">ЭКСПЕРИМЕНТ №9 · ХРОНОКАМЕРА «ПУЛЬСАР-7»</div>
+  <button id="bootBtn">▶ НАЧАТЬ НАБЛЮДЕНИЕ</button>
+  <div class="h">полный экран · горизонталь · звук</div>
+</div>
 <script>
 "use strict";
-console.log('ЭХО · сборка 11 (мобильный полный экран) — если видите это, файл обновлён');
+console.log('ЭХО · сборка 12 (boot + внешние звуки) — если видите это, файл обновлён');
 /* ============================================================
    ЭХО — эксперимент №9 · НИИ «ПУЛЬСАР» · хронокамера К-7
    Блоки Б (10) + В (5) + 4 warp-сектора · лиминальный слой
-   Сборка 11: fullscreen по первому касанию · блокировка
-   горизонтали · дробный масштаб на телефонах · iOS home-screen
+   Сборка 12: стартовый экран · snd/ внешние звуки + ambient
    ============================================================ */
 
 // ---------- константы ----------
@@ -73,11 +90,11 @@ function hash(x,y){let h=(x*374761393+y*668265263)|0;h=(h^(h>>13))*1274126177|0;
 const pad=(n,l)=>String(n).padStart(l,'0');
 
 // ---------- аудио (процедурный синтез) ----------
-const SFX={ctx:null,master:null,on:true,
+const SFX={ctx:null,master:null,on:true,humG:null,
   init(){ if(this.ctx)return; try{
     const C=this.ctx=new (window.AudioContext||window.webkitAudioContext)();
     this.master=C.createGain(); this.master.gain.value=.55; this.master.connect(C.destination);
-    const g=C.createGain(); g.gain.value=.05; g.connect(this.master);
+    const g=this.humG=C.createGain(); g.gain.value=.05; g.connect(this.master);
     const lp=C.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=160; lp.connect(g);
     [52,104.7].forEach(function(f,i){
       const o=C.createOscillator();o.type=i?'triangle':'sawtooth';o.frequency.value=f;
@@ -125,6 +142,89 @@ const SFX={ctx:null,master:null,on:true,
   tapeStop(){this.t(1600,220,.22,'sine',.06);this.n(.12,3000,4,.04)}
 };
 
+// ============================================================
+//   ВНЕШНИЕ ЗВУКИ · файлы в папке snd/ рядом с index.html
+//   Нет файла — молча играет синтез. Работает по HTTP(S).
+//   Загрузка стартует после первого касания (политика браузеров).
+// ============================================================
+(function(){
+  const DIR='snd';
+  const FORMATS=['mp3','ogg','wav','m4a'];        // порядок попыток
+  const NAMES=['jump','land','step','plate','door','door_open','door_close',
+    'rec_on','rec_beep','echo','echo_die','coil','pulse','death','win',
+    'deny','slam','cough','tape_stop'];
+  const AMB_NAMES=['ambient','background','fon'];  // фоновый: первый найденный
+  const EXT_VOL=0.9;     // громкость внешних эффектов
+  const AMB_VOL=0.35;    // громкость фонового трека
+  const ext=SFX.ext={};
+  let started=false,ambSrc=null,ambGain=null;
+
+  function fetchBuf(url){
+    return fetch(url).then(function(r){
+      if(!r.ok)throw new Error(r.status);
+      return r.arrayBuffer();
+    }).then(function(ab){
+      return new Promise(function(res,rej){SFX.ctx.decodeAudioData(ab,res,rej);});
+    });
+  }
+  function tryLoad(name){
+    let p=Promise.reject();
+    for(let i=0;i<FORMATS.length;i++){
+      const url=DIR+'/'+name+'.'+FORMATS[i];
+      p=p.catch(function(){return fetchBuf(url);});
+    }
+    return p.then(function(buf){ext[name]=buf;},function(){});
+  }
+  function playBuf(name){
+    const b=ext[name]; if(!b)return false;
+    const s=SFX.ctx.createBufferSource(); s.buffer=b;
+    const g=SFX.ctx.createGain(); g.gain.value=EXT_VOL;
+    s.connect(g); g.connect(SFX.master); s.start();
+    return true;
+  }
+  function startAmbient(){
+    let key=null;
+    for(const n of AMB_NAMES){ if(ext[n]){key=n;break;} }
+    if(!key||ambSrc)return;
+    // внешний фон найден — приглушаем встроенный гул завода
+    if(SFX.humG&&SFX.ctx){
+      try{SFX.humG.gain.setTargetAtTime(.008,SFX.ctx.currentTime,1);}catch(e){}
+    }
+    ambSrc=SFX.ctx.createBufferSource();
+    ambSrc.buffer=ext[key]; ambSrc.loop=true;
+    ambGain=SFX.ctx.createGain(); ambGain.gain.value=SFX.on?AMB_VOL:0;
+    ambSrc.connect(ambGain); ambGain.connect(SFX.master);
+    ambSrc.start();
+  }
+  SFX.setAmbMute=function(m){ if(ambGain)ambGain.gain.value=m?0:AMB_VOL; };
+  function start(){
+    if(started||!SFX.ctx)return; started=true;
+    Promise.all(NAMES.map(tryLoad));
+    Promise.all(AMB_NAMES.map(tryLoad)).then(function(){startAmbient();});
+  }
+  const _init=SFX.init.bind(SFX);
+  SFX.init=function(){ _init(); if(SFX.ctx)start(); };
+
+  // подмена синтеза: если файл есть — играет файл
+  const MO={jump:'jump',land:'land',step:'step',plate:'plate',
+    recOn:'rec_on',recBeep:'rec_beep',echo:'echo',echoDie:'echo_die',
+    coil:'coil',pulse:'pulse',death:'death',win:'win',deny:'deny',
+    slam:'slam',cough:'cough',tapeStop:'tape_stop'};
+  Object.keys(MO).forEach(function(m){
+    const orig=SFX[m].bind(SFX);
+    SFX[m]=function(){
+      if(SFX.on&&ext[MO[m]]&&playBuf(MO[m]))return;
+      orig.apply(null,arguments); };
+  });
+  const origDoor=SFX.door.bind(SFX);
+  SFX.door=function(o){
+    const key=o?'door_open':'door_close';
+    if(SFX.on&&ext[key]&&playBuf(key))return;
+    if(SFX.on&&ext.door&&playBuf('door'))return;
+    origDoor(o);
+  };
+})();
+
 // ---------- ввод ----------
 const Keys={},JP=new Set();
 const MAP={ArrowLeft:'L',KeyA:'L',ArrowRight:'R',KeyD:'R',ArrowUp:'J',KeyW:'J',Space:'J',
@@ -151,8 +251,6 @@ document.getElementById('stage').addEventListener('pointerdown',function(e){
 });
 
 // ---------- мобильный полный экран ----------
-// Политика браузеров: requestFullscreen разрешён только из жеста пользователя,
-// поэтому fullscreen вешается на ПЕРВОЕ касание/нажатие (оно и так нужно для звука).
 const IS_MOBILE=isTouch&&(function(){
   try{return matchMedia('(pointer:coarse)').matches;}catch(e){return false;}})();
 const FS_OK=(function(){const el=document.documentElement;
@@ -176,12 +274,12 @@ function goFullscreen(){
 let fsTried=false;
 function tryFS(){ if(fsTried)return; fsTried=true; if(IS_MOBILE)goFullscreen(); }
 ['pointerdown','touchstart','keydown'].forEach(function(ev){
-  addEventListener(ev,tryFS,true);   // capture: срабатывает раньше кнопок
+  addEventListener(ev,tryFS,true);
 });
 ['fullscreenchange','webkitfullscreenchange','orientationchange'].forEach(function(ev){
   addEventListener(ev,function(){
     setTimeout(resize,80);
-    setTimeout(resize,300);   // размеры меняются не мгновенно
+    setTimeout(resize,300);
   });
 });
 if(isTouch){
@@ -189,6 +287,19 @@ if(isTouch){
   document.addEventListener('contextmenu',function(e){e.preventDefault();});
   document.addEventListener('dblclick',function(e){e.preventDefault();});
 }
+
+// стартовый экран: клик = жест пользователя → fullscreen гарантирован
+(function(){
+  if(!IS_MOBILE)return;               // на десктопе — сразу титул
+  const boot=document.getElementById('boot');
+  boot.classList.add('on');
+  boot.addEventListener('click',function(e){
+    e.preventDefault();
+    SFX.init();                       // разблокировка звука — тоже требует жеста
+    tryFS();                          // полный экран + блокировка горизонтали
+    boot.classList.remove('on');
+  });
+})();
 
 // ---------- спрайт подопытного ----------
 const DUDE={
@@ -440,7 +551,7 @@ const LEVELS=[
  note:'В секторе зафиксированы помехи. Плёнка засвечена. Объект засвечен слегка.',
  signs:[{x:5,y:6,t:'ПОМЕХИ РВУТ ЗАПИСЬ'},{x:27,y:6,t:'ЗОНА ПОМЕХ'},{x:42,y:9,t:'ИМПУЛЬС · 3 СЕК'}]},
 {name:'ДВОЙНОЙ СЛЕПОЙ ОПЫТ',sub:'СЕКТОР Б-6',date:'03.12.1986',echo:3,dark:false,map:mapL6(),
- hint:'ТРИ ПЛИТЫ — ТРИ ШЛЮЗА · ЗАПИСИ ИДУТ ПАРАЛЕЛЬНО · СЧИТАЙ ДЛИНУ КАЖДОЙ',
+ hint:'ТРИ ПЛИТЫ — ТРИ ШЛЮЗА · ЗАПИСИ ИДУТ ПАРАЛЛЕЛЬНО · СЧИТАЙ ДЛИНУ КАЖДОЙ',
  note:'Двойной слепой опыт: объект и его записи действуют независимо. Результат — одинаков. Это беспокоит.',
  signs:[{x:4,y:6,t:'ПЛИТА-3 ЗА ШЛЮЗОМ-1'},{x:27,y:5,t:'ВВЕРХ — ПЛИТА-2'},{x:47,y:6,t:'ОБЪЕКТ НЕ ОДИН'}]},
 {name:'ИНТЕРФЕРЕНЦИЯ',sub:'СЕКТОР Б-7',date:'11.12.1986',echo:2,dark:false,map:mapL7(),
@@ -816,7 +927,7 @@ function stepPlay(){
   if(JP.has('E')){ if(!G.rec.active)startRec(); else stopRec(false); }
   if(JP.has('Q'))clearEchoes();
   if(JP.has('RS')){loadLevel(G.lvlIdx);msg('СЕКТОР ПЕРЕЗАПУЩЕН',120);return;}
-  if(JP.has('M')){SFX.on=!SFX.on;msg(SFX.on?'ЗВУК: ВКЛ':'ЗВУК: ВЫКЛ',90);}
+  if(JP.has('M')){SFX.on=!SFX.on;SFX.setAmbMute(!SFX.on);msg(SFX.on?'ЗВУК: ВКЛ':'ЗВУК: ВЫКЛ',90);}
   // запись: длина плёнки = катушки; подбор катушки удлиняет на ходу
   if(G.rec.active){
     G.rec.tick++;
@@ -1139,8 +1250,8 @@ let SC=1;
 function resize(){
   const w=innerWidth,h=innerHeight;
   let s=Math.min(w/VW,h/VH);
-  if(s>=2)s=Math.floor(s);   // целочисленный масштаб на больших экранах;
-                             // на телефонах (<2x) — дробный, чтобы заполнить экран
+  if(s>=2)s=Math.floor(s);   // целые масштабы на больших экранах;
+                             // на телефонах (<2x) — дробный, экран заполнен
   SC=s;
   const st=document.getElementById('stage');
   st.style.width=VW*s+'px'; st.style.height=VH*s+'px';
@@ -1611,11 +1722,10 @@ function renderTitle(){
   uctx.fillText('ОТДЕЛ 07',0,-2); uctx.fillText('ДОПУЩЕНО',0,10);
   uctx.restore();
   uctx.textAlign='center';
-  if(IS_MOBILE){
+  if(IS_MOBILE&&!FS_OK){
     uctx.font='9px "IBM Plex Mono",monospace';
     uctx.fillStyle='rgba(200,205,200,.55)';
-    uctx.fillText(FS_OK?'КАСАНИЕ = ПОЛНЫЙ ЭКРАН И БЛОКИРОВКА ГОРИЗОНТАЛИ'
-      :'iOS: ДОБАВЬТЕ НА ЭКРАН «ДОМОЙ» — ИГРА ОТКРОЕТСЯ НА ВЕСЬ ЭКРАН',W/2,232);
+    uctx.fillText('iOS: ДОБАВЬТЕ НА ЭКРАН «ДОМОЙ» — ИГРА ОТКРОЕТСЯ НА ВЕСЬ ЭКРАН',W/2,232);
   }
   if((G.save.unlocked||0)>0){
     uctx.font='11px "Pixelify Sans",monospace';uctx.fillStyle=CYAN;
@@ -1627,7 +1737,7 @@ function renderTitle(){
       :'[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
   }
   uctx.font='8px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.4)';
-  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 11',W/2,H-6);
+  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 12',W/2,H-6);
   uctx.textAlign='left';
 }
 function renderBrief(){
