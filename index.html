@@ -39,10 +39,11 @@
 </div>
 <script>
 "use strict";
-console.log('ЭХО · сборка 9 (warp-секторы) — если видите это, файл обновлён');
+console.log('ЭХО · сборка 10 (экономика плёнки) — если видите это, файл обновлён');
 /* ============================================================
    ЭХО — эксперимент №9 · НИИ «ПУЛЬСАР» · хронокамера К-7
-   Блоки Б (10) + В (5) + 4 warp-сектора вне плана
+   Блоки Б (10) + В (5) + 4 warp-сектора · лиминальный слой
+   Сборка 10: катушки = плёнка · эхо конечны · смерть стирает эхо
    ============================================================ */
 
 // ---------- константы ----------
@@ -50,7 +51,7 @@ const TS=16, VW=480, VH=270;
 const GRAV=.34, JUMPV=-5.9, MAXVX=1.75, ACC=.28, FRIC=.3, MAXFALL=6.5;
 const P_W=8, P_H=13;
 const PULSE_T=168;   // импульсный шлюз: ~2.8 с
-const REC_MAX=900;   // лимит записи: 30 секунд
+const REC_BASE=150, REC_COIL=150;  // плёнка: 5 с база + 5 с за катушку (запись 30 кадров/с)
 
 // ---------- утилиты ----------
 const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t;
@@ -211,7 +212,7 @@ function mapL5(){const W=72,H=14,m=mkGrid(H,W);border(m);
 
 function mapL6(){const W=72,H=14,m=mkGrid(H,W);border(m);
   box(m,14,8,14,12,'A');box(m,38,8,38,12,'B');box(m,56,8,56,12,'C');
-  m[12][3]='P';m[12][8]='1';m[12][20]='3';m[12][66]='F';
+  m[12][3]='P';m[12][8]='1';m[12][17]='o';m[12][20]='3';m[12][66]='F';
   box(m,24,13,25,13,'~');
   box(m,28,11,32,11,'=');m[10][30]='2';
   m[10][25]='o';m[9][46]='o';m[12][62]='o';
@@ -220,7 +221,7 @@ function mapL6(){const W=72,H=14,m=mkGrid(H,W);border(m);
 
 function mapL7(){const W=88,H=14,m=mkGrid(H,W);border(m);
   box(m,66,7,66,12,'D');
-  m[12][3]='P';m[12][8]='4';m[12][78]='F';
+  m[12][3]='P';m[12][8]='4';m[12][14]='o';m[12][78]='F';
   m[12][18]='^';m[12][19]='^';
   box(m,26,11,30,11,'=');
   box(m,26,12,30,12,'^');
@@ -253,7 +254,7 @@ function mapL9(){const W=64,H=14,m=mkGrid(H,W);border(m);
 
 function mapL10(){const W=104,H=15,m=mkGrid(H,W);border(m);
   box(m,16,9,16,13,'A');box(m,48,9,48,13,'B');box(m,90,9,90,13,'D');
-  m[13][3]='P';m[13][10]='1';m[13][22]='2';m[13][62]='4';m[13][98]='F';
+  m[13][3]='P';m[13][10]='1';m[13][18]='o';m[13][22]='2';m[13][62]='4';m[13][98]='F';
   box(m,26,9,44,13,'@');
   m[13][32]='^';m[13][33]='^';m[13][38]='^';m[13][39]='^';m[11][36]='o';
   box(m,52,12,56,12,'=');m[10][54]='o';
@@ -365,15 +366,15 @@ function mapW4(){const W=96,H=10,m=mkGrid(H,W);border(m);
 // ---------- данные уровней ----------
 const LEVELS=[
 {name:'КАЛИБРОВКА',sub:'СЕКТОР Б-1',date:'04.11.1986',echo:1,dark:false,map:mapL1(),
- hint:'A/D — ДВИЖЕНИЕ · SPACE — ПРЫЖОК',
+ hint:'A/D — ДВИЖЕНИЕ · SPACE — ПРЫЖОК · КАТУШКИ УДЛИНЯЮТ ПЛЁНКУ',
  note:'День 41. Объект передвигается по сектору самостоятельно. Цель перемещений не установлена. Наблюдение продолжается.',
- signs:[{x:2,y:6,t:'ДВИЖЕНИЕ: A · D'},{x:9,y:4,t:'ПРЫЖОК: SPACE'},{x:26,y:7,t:'НЕ НАСТУПАТЬ'}]},
+ signs:[{x:2,y:6,t:'ДВИЖЕНИЕ: A · D'},{x:9,y:4,t:'ПРЫЖОК: SPACE'},{x:14,y:6,t:'КАТУШКА = ПЛЁНКА'},{x:26,y:7,t:'НЕ НАСТУПАТЬ'}]},
 {name:'ПЕРВЫЙ ОТКЛИК',sub:'СЕКТОР Б-2',date:'09.11.1986',echo:1,dark:false,map:mapL2(),
- hint:'E — ЗАПИСЬ ЭХО · ВСТАНЬ НА ПЛИТУ, НАЖМИ E, ПОДОЖДИ, НАЖМИ E СНОВА — ЭХО ОСТАНЕТСЯ ДЕРЖАТЬ ПЛИТУ',
+ hint:'ЗАПИШИ, КАК СТОИШЬ НА ПЛИТЕ (E · E) — ЭХО ПОВТОРИТ ЗАПИСЬ И ИСЧЕЗНЕТ · УСПЕЙ ПРОЙТИ ШЛЮЗ',
  note:'Объект впервые воспользовался хронокамерой. На плёнке — сам объект. Дважды. Комиссия затрудняется с комментарием.',
- signs:[{x:5,y:6,t:'ЭХО ДЕРЖИТ ПЛИТУ'},{x:19,y:4,t:'ШЛЮЗ-1'},{x:40,y:9,t:'ТИШЕ'}]},
+ signs:[{x:5,y:6,t:'ЭХО ЖИВЁТ СТОЛЬКО, СКОЛЬКО ЗАПИСАНО'},{x:19,y:4,t:'ШЛЮЗ-1'},{x:40,y:9,t:'ТИШЕ'}]},
 {name:'ГАЛЬВАНИЧЕСКАЯ ЦЕПЬ',sub:'СЕКТОР Б-3',date:'16.11.1986',echo:2,dark:false,map:mapL3(),
- hint:'КАЖДОЕ ЭХО ДЕРЖИТ СВОЮ ПЛИТУ · Q — СТЕРЕТЬ ВСЕ ЭХО',
+ hint:'ЭХО ПОВТОРЯЕТ ЗАПИСЬ РОВНО ПО ВРЕМЕНИ · КАТУШКА = +5 СЕК ПЛЁНКИ · Q — СТЕРЕТЬ',
  note:'Записи объекта действуют синхронно с оригиналом. Инженер Петров отказывается от дальнейших дежурств.',
  signs:[{x:4,y:6,t:'ПЛИТА-1 → ШЛЮЗ-1'},{x:27,y:5,t:'ПЛИТА-2 НА РЕШЁТКЕ'},{x:45,y:6,t:'ШЛЮЗ-2'}]},
 {name:'РЕАКТОРНАЯ ШАХТА',sub:'СЕКТОР Б-4',date:'21.11.1986',echo:1,dark:false,map:mapL4(),
@@ -385,7 +386,7 @@ const LEVELS=[
  note:'В секторе зафиксированы помехи. Плёнка засвечена. Объект засвечен слегка.',
  signs:[{x:5,y:6,t:'ПОМЕХИ РВУТ ЗАПИСЬ'},{x:27,y:6,t:'ЗОНА ПОМЕХ'},{x:42,y:9,t:'ИМПУЛЬС · 3 СЕК'}]},
 {name:'ДВОЙНОЙ СЛЕПОЙ ОПЫТ',sub:'СЕКТОР Б-6',date:'03.12.1986',echo:3,dark:false,map:mapL6(),
- hint:'ТРИ ПЛИТЫ — ТРИ ШЛЮЗА · ПЛАНИРУЙ ПОРЯДОК ЗАПИСЕЙ',
+ hint:'ТРИ ПЛИТЫ — ТРИ ШЛЮЗА · ЗАПИСИ ИДУТ ПАРАЛЛЕЛЬНО · СЧИТАЙ ДЛИНУ КАЖДОЙ',
  note:'Двойной слепой опыт: объект и его записи действуют независимо. Результат — одинаков. Это беспокоит.',
  signs:[{x:4,y:6,t:'ПЛИТА-3 ЗА ШЛЮЗОМ-1'},{x:27,y:5,t:'ВВЕРХ — ПЛИТА-2'},{x:47,y:6,t:'ОБЪЕКТ НЕ ОДИН'}]},
 {name:'ИНТЕРФЕРЕНЦИЯ',sub:'СЕКТОР Б-7',date:'11.12.1986',echo:2,dark:false,map:mapL7(),
@@ -405,7 +406,7 @@ const LEVELS=[
  note:'Гипотеза подтверждена: запись неотличима от оригинала. Сектор Б закрывается на консервацию. Объект переводится в блок В.',
  signs:[{x:2,y:7,t:'ОТДЕЛ №7'},{x:30,y:6,t:'ПОМЕХИ'},{x:56,y:7,t:'НЕ ПРИСЛОНЯТЬСЯ К ПРОШЛОМУ'},{x:91,y:7,t:'БЛОК В →'}]},
 {name:'ПОДЪЁМНИК',sub:'СЕКТОР В-1',date:'09.01.1987',echo:1,dark:false,map:mapV1(),
- hint:'ЛИФТ ХОДИТ САМ · ЗАПИШИ ЭХО НА ПЛИТЕ ВЕРХНЕГО ЯРУСА — ОНО ДЕРЖИТ ШЛЮЗ ВНИЗУ',
+ hint:'ЛИФТ ХОДИТ САМ · ЗАПИШИ ЭХО НА ПЛИТЕ ВЕРХНЕГО ЯРУСА — ОНО ДЕРЖИТ ШЛЮЗ, ПОКА ИДЁТ ЗАПИСЬ',
  note:'Институт переводится на консервацию. Объекту открыт блок В. Лифты блока В ещё работают. Пока.',
  signs:[{x:2,y:17,t:'БЛОК В · КОНСЕРВАЦИЯ'},{x:15,y:8,t:'ШАХТА ЛИФТА'},{x:23,y:9,t:'ПЛИТА-1 → ШЛЮЗ-1'},{x:4,y:17,t:'ВЫХОД'}]},
 {name:'СВИНЦОВЫЙ ЭКРАН',sub:'СЕКТОР В-2',date:'16.01.1987',echo:0,dark:false,map:mapV2(),
@@ -527,7 +528,7 @@ function loadLevel(i){
   G.lvl=L;G.echoes=[];G.parts=[];G.lt=0;G.winT=0;G.msgT=0;G.msg=null;G.paused=false;
   G.player={x:L.spawn.x,y:L.spawn.y,vx:0,vy:0,face:1,ground:false,coyote:0,jbuf:0,
     animT:0,onPlat:null,dead:false,deadT:0,stepT:0,w:P_W,h:P_H};
-  G.rec={active:false,frames:[],tick:0,beep:0};
+  G.rec={active:false,frames:[],tick:0,beep:0,maxLen:REC_BASE};
   G.cam={x:clamp(L.spawn.x-VW/2,0,Math.max(0,L.W*TS-VW)),y:camY(L.spawn.y)};
   // --- лиминальный слой ---
   L.marks=(G.save.marks[i]||[]).slice(0,10);
@@ -614,21 +615,28 @@ function entNoise(x,y,w,h){const L=G.lvl;
 // ---------- запись и эхо ----------
 function startRec(){
   const P=G.player,L=G.lvl;
-  if(!L.echoLimit){msg('СЕКТОР ЭКРАНИРОВАН · ХРОНОКАМЕРА БЕССИЛЬНА',150);SFX.deny();return;}
-  if(G.echoes.length>=L.echoLimit){msg('КАНАЛЫ ЭХО ЗАНЯТЫ · Q — ОЧИСТИТЬ',150);SFX.deny();return;}
+  if(!L.echoLimit){
+    msg(L.def.sub==='СЕКТОР В-2'?'СЕКТОР ЭКРАНИРОВАН СВИНЦОМ · ХРОНОКАМЕРА БЕССИЛЬНА'
+      :'КАНАЛОВ ЭХО НЕТ · ПЛЁНКА НЕ ЗАПИШЕТСЯ',150);
+    SFX.deny();return;}
+  if(G.echoes.length>=L.echoLimit){msg('КАНАЛЫ ЗАНЯТЫ · Q — СТЕРЕТЬ ИЛИ ПОДОЖДАТЬ ОКОНЧАНИЯ',150);SFX.deny();return;}
   if(entNoise(P.x,P.y,P_W,P_H)){msg('ПОМЕХИ: ЗДЕСЬ НЕ ЗАПИСЫВАЕТСЯ',150);SFX.deny();return;}
-  G.rec={active:true,frames:[],tick:0,beep:0}; SFX.recOn();
+  G.rec={active:true,frames:[],tick:0,beep:0,maxLen:REC_BASE+REC_COIL*L.coilsGot};
+  msg('ЗАПИСЬ · ПЛЁНКА '+(G.rec.maxLen/30)+' СЕК',80);
+  SFX.recOn();
 }
 function stopRec(cancel){
   const R=G.rec;
-  if(R.active&&R.frames.length>10&&!cancel){
-    const f=R.frames;
-    G.echoes.push({frames:f,t:0,playing:true,frozen:false,dieT:0,
-      x:f[0].x,y:f[0].y,face:f[0].fc,fr:'idle'});
-    SFX.echo(); burst(f[0].x+4,f[0].y+6,'#7df3e8',18);
-    msg('ЭХО ЗАПИСАНО · КАНАЛ '+G.echoes.length,120);
+  if(R.active&&!cancel){
+    if(R.frames.length>10){
+      const f=R.frames;
+      G.echoes.push({frames:f,t:0,playing:true,dieT:0,
+        x:f[0].x,y:f[0].y,face:f[0].fc,fr:'idle'});
+      SFX.echo(); burst(f[0].x+4,f[0].y+6,'#7df3e8',18);
+      msg('ЭХО ЗАПИСАНО · '+Math.round(f.length/30)+' СЕК · КАНАЛ '+G.echoes.length,120);
+    } else { msg('ЗАПИСЬ СЛИШКОМ КОРОТКАЯ',90); SFX.deny(); }
   }
-  G.rec={active:false,frames:[],tick:0,beep:0};
+  G.rec={active:false,frames:[],tick:0,beep:0,maxLen:REC_BASE};
 }
 function clearEchoes(){
   if(!G.echoes.length&&!G.rec.active)return;
@@ -646,7 +654,8 @@ function stepEchoes(){
       const a=e.frames[i],b=e.frames[Math.min(i+1,e.frames.length-1)];
       if(a&&b){e.x=lerp(a.x,b.x,f);e.y=lerp(a.y,b.y,f);e.face=b.fc;e.fr=b.fr;}
       if(G.lt%3===0)G.parts.push({x:e.x+4,y:e.y+6,vx:(Math.random()-.5)*.3,vy:-.15,life:22,c:'#7df3e8',s:1,g:0});
-      if(e.t>=e.frames.length-1){e.playing=false;e.frozen=true;}
+      // плёнка кончилась: эхо повторило запись — и растворилось
+      if(e.t>=e.frames.length-1){e.playing=false;echoEnd(e);continue;}
     }
     if(entNoise(e.x,e.y,P_W,P_H)){echoDie(e);continue;}
     const bx={x:e.x,y:e.y,w:P_W,h:P_H};
@@ -664,6 +673,7 @@ function stepEchoes(){
   G.echoes=G.echoes.filter(function(e){return !e.dieT||e.dieT<22;});
 }
 function echoDie(e){ if(e.dieT)return; e.dieT=1; SFX.echoDie(); burst(e.x+4,e.y+6,'#7df3e8',26); }
+function echoEnd(e){ if(e.dieT)return; e.dieT=1; SFX.tapeStop(); burst(e.x+4,e.y+6,'#7df3e8',16); }
 function burst(x,y,c,n){
   for(let i=0;i<n;i++){const a=Math.random()*6.28,v=.5+Math.random()*1.5;
     G.parts.push({x:x,y:y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.4,life:20+Math.random()*25,c:c,s:Math.random()<.4?2:1,g:.03});}}
@@ -753,14 +763,16 @@ function stepPlay(){
   if(JP.has('Q'))clearEchoes();
   if(JP.has('RS')){loadLevel(G.lvlIdx);msg('СЕКТОР ПЕРЕЗАПУЩЕН',120);return;}
   if(JP.has('M')){SFX.on=!SFX.on;msg(SFX.on?'ЗВУК: ВКЛ':'ЗВУК: ВЫКЛ',90);}
+  // запись: длина плёнки = катушки; подбор катушки удлиняет на ходу
   if(G.rec.active){
     G.rec.tick++;
     if(G.rec.tick>=2){G.rec.tick=0;
       G.rec.frames.push({x:P.x,y:P.y,fc:P.face,
         fr:!P.ground?'jump':(Math.abs(P.vx)>.5?(Math.floor(P.animT/6)%2?'runA':'runB'):'idle')});
-      if(G.rec.frames.length>=REC_MAX)stopRec(false);}
+      if(G.rec.frames.length>=G.rec.maxLen)stopRec(false);}
     G.rec.beep++;
-    if(G.rec.beep>45){G.rec.beep=0;SFX.recBeep();}
+    const warn=G.rec.frames.length>G.rec.maxLen*.8;
+    if(G.rec.beep>(warn?18:45)){G.rec.beep=0;SFX.recBeep();}
     if(entNoise(P.x,P.y,P_W,P_H)){msg('ПОМЕХИ: ЗАПИСЬ СОРВАНА',130);stopRec(true);}
   }
   const ch=[false,false,false,false];
@@ -794,7 +806,8 @@ function stepPlay(){
   for(const c of L.coils){ if(c.taken)continue;
     if(overlap({x:P.x,y:P.y,w:P_W,h:P_H},{x:c.x*TS+2,y:c.y*TS+2,w:12,h:12})){
       c.taken=true;L.coilsGot++;SFX.coil();burst(c.x*TS+8,c.y*TS+8,'#ffcf7a',14);
-      msg('КАТУШКА '+L.coilsGot+' / '+L.totalCoils,90);}}
+      if(G.rec.active){G.rec.maxLen+=REC_COIL;msg('КАТУШКА · ПЛЁНКА +5 СЕК',90);}
+      else msg('КАТУШКА '+L.coilsGot+'/'+L.totalCoils+' · ПЛЁНКА '+((REC_BASE+REC_COIL*L.coilsGot)/30)+' СЕК',90);}}
   if(!P.dead){
     const bx={x:P.x+1,y:P.y+2,w:P_W-2,h:P_H-2};
     for(const s of L.spikes){if(overlap(bx,{x:s.x*TS+2,y:s.y*TS+6,w:12,h:10})){killPlayer();break;}}
@@ -839,7 +852,9 @@ function killPlayer(){const P=G.player;
   if(P.dead||G.winT)return;
   P.dead=true;P.deadT=0;G.deaths++;G.save.deaths++;G.glitch=50;G.shake=5;SFX.death();
   if(G.rec.active)stopRec(true);
-  burst(P.x+4,P.y+6,'#e8e2d4',30); msg('СИГНАЛ ПОТЕРЯН',80);
+  // смерть стирает эхо: каналы освобождаются
+  for(const e of G.echoes)if(!e.dieT){e.dieT=1;burst(e.x+4,e.y+6,'#7df3e8',14);}
+  burst(P.x+4,P.y+6,'#e8e2d4',30); msg('СИГНАЛ ПОТЕРЯН · ЭХО СБРОШЕНЫ',80);
   const i=G.lvlIdx,mm=G.save.marks[i]||(G.save.marks[i]=[]);
   if(mm.length>=10)mm.shift();
   mm.push([Math.round(P.x),Math.round(P.y)]);
@@ -1347,7 +1362,7 @@ function drawCoils(L){
 }
 function drawEcho(e){
   let x=e.x,y=e.y;
-  let al=e.frozen?(.5+.15*Math.sin(G.t*.05)):.62;
+  let al=.62;
   if(e.dieT){al=Math.max(0,1-e.dieT/22)*.7; y-=e.dieT*.3;}
   else if(e.playing&&G.t%17<2)x+=(Math.random()-.5)*2;
   drawDude(ctx,x,y,e.fr,e.face,G.palEcho,al);
@@ -1476,11 +1491,12 @@ function renderHUD(){
   }
   if(G.rec.active){
     uctx.fillStyle='rgba(125,243,232,.2)';uctx.fillRect(52,H-22,140,4);
-    uctx.fillStyle=CYAN;
-    uctx.fillRect(52,H-22,140*Math.min(1,G.rec.frames.length/REC_MAX),4);
+    const frac=Math.min(1,G.rec.frames.length/G.rec.maxLen);
+    uctx.fillStyle=(frac>.85&&(G.t>>3)%2)?'#ff4b3e':CYAN;
+    uctx.fillRect(52,H-22,140*frac,4);
   }
   uctx.textAlign='right';uctx.fillStyle=DIM;
-  uctx.fillText('КАТУШКИ '+L.coilsGot+'/'+L.totalCoils,W-14,H-28);
+  uctx.fillText('КАТУШКИ '+L.coilsGot+'/'+L.totalCoils+' · ПЛЁНКА '+((REC_BASE+REC_COIL*L.coilsGot)/30)+'С',W-14,H-28);
   uctx.textAlign='left';
   if(G.state==='play'&&!G.paused&&G.player&&!G.player.dead&&
      entNoise(G.player.x,G.player.y,P_W,P_H)&&(G.t>>3)%2){
@@ -1498,12 +1514,13 @@ function renderHUD(){
     uctx.fillStyle='rgba(2,4,6,.78)'; uctx.fillRect(0,0,W,H);
     uctx.textAlign='center';
     uctx.font='15px "Pixelify Sans",monospace';uctx.fillStyle=AMBER;
-    uctx.fillText('НАБЛЮДЕНИЕ ПРИОСТАНОВЛЕНО',W/2,H/2-46);
+    uctx.fillText('НАБЛЮДЕНИЕ ПРИОСТАНОВЛЕНО',W/2,H/2-56);
     uctx.font='10px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(220,215,205,.8)';
     const lines=['E — запись эхо · Q — стереть эхо · R — перезапуск сектора',
-      'M — звук: '+(SFX.on?'ВКЛ':'ВЫКЛ')+' · ESC — продолжить',
+      'катушка = +5 сек плёнки · эхо живёт ровно по записи',
+      'смерть стирает эхо · M — звук: '+(SFX.on?'ВКЛ':'ВЫКЛ')+' · ESC — продолжить',
       '','СМЕРТЕЙ ЗА СЕССИЮ: '+G.deaths];
-    for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],W/2,H/2-14+i*18);
+    for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],W/2,H/2-24+i*18);
     uctx.textAlign='left';
   }
 }
@@ -1549,7 +1566,7 @@ function renderTitle(){
       :'[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
   }
   uctx.font='8px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.4)';
-  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 9',W/2,H-6);
+  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 10',W/2,H-6);
   uctx.textAlign='left';
 }
 function renderBrief(){
