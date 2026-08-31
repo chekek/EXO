@@ -2,13 +2,19 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ЭХО">
 <title>ЭХО · эксперимент №9</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  html,body{margin:0;height:100%;background:#040506;overflow:hidden;font-family:"IBM Plex Mono",monospace}
-  #stage{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#000}
+  html,body{margin:0;height:100%;background:#040506;overflow:hidden;
+    font-family:"IBM Plex Mono",monospace;overscroll-behavior:none;touch-action:none}
+  #stage{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+    background:#000;touch-action:none}
   canvas{position:absolute;left:0;top:0;width:100%;height:100%}
   #game{image-rendering:pixelated}
   #fx{position:absolute;inset:0;pointer-events:none;z-index:5;
@@ -24,6 +30,12 @@
   #tJ{right:14px;bottom:22px;width:68px;height:68px}
   #tE{right:96px;bottom:22px}#tQ{right:96px;bottom:92px;width:46px;height:46px;font-size:10px}
   #tP{right:16px;top:14px;width:38px;height:38px;font-size:13px}
+  /* заставка при вертикальной ориентации (только телефон) */
+  #rot{position:fixed;inset:0;z-index:20;display:none;background:#040506;color:#ffb46b;
+    font-family:"IBM Plex Mono",monospace;flex-direction:column;align-items:center;
+    justify-content:center;text-align:center;letter-spacing:2px;font-size:15px;line-height:2.2}
+  #rot span{font-size:10px;letter-spacing:1px;opacity:.55}
+  @media (orientation:portrait) and (pointer:coarse){#rot{display:flex}}
 </style>
 </head>
 <body>
@@ -37,13 +49,15 @@
     <div class="tb" id="tQ">СБРОС</div><div class="tb" id="tP">II</div>
   </div>
 </div>
+<div id="rot">⟳ ПОВЕРНИТЕ УСТРОЙСТВО<span>протокол наблюдения ведётся только по горизонтали</span></div>
 <script>
 "use strict";
-console.log('ЭХО · сборка 10 (экономика плёнки) — если видите это, файл обновлён');
+console.log('ЭХО · сборка 11 (мобильный полный экран) — если видите это, файл обновлён');
 /* ============================================================
    ЭХО — эксперимент №9 · НИИ «ПУЛЬСАР» · хронокамера К-7
    Блоки Б (10) + В (5) + 4 warp-сектора · лиминальный слой
-   Сборка 10: катушки = плёнка · эхо конечны · смерть стирает эхо
+   Сборка 11: fullscreen по первому касанию · блокировка
+   горизонтали · дробный масштаб на телефонах · iOS home-screen
    ============================================================ */
 
 // ---------- константы ----------
@@ -135,6 +149,46 @@ document.getElementById('stage').addEventListener('pointerdown',function(e){
   SFX.init();
   if(!e.target.classList.contains('tb'))JP.add('OK');
 });
+
+// ---------- мобильный полный экран ----------
+// Политика браузеров: requestFullscreen разрешён только из жеста пользователя,
+// поэтому fullscreen вешается на ПЕРВОЕ касание/нажатие (оно и так нужно для звука).
+const IS_MOBILE=isTouch&&(function(){
+  try{return matchMedia('(pointer:coarse)').matches;}catch(e){return false;}})();
+const FS_OK=(function(){const el=document.documentElement;
+  return !!(el.requestFullscreen||el.webkitRequestFullscreen);})();
+function goFullscreen(){
+  const el=document.documentElement;
+  const fn=el.requestFullscreen||el.webkitRequestFullscreen;
+  if(!fn)return;
+  try{
+    const r=fn.call(el);
+    const lock=function(){
+      if(screen.orientation&&screen.orientation.lock){
+        try{
+          const q=screen.orientation.lock('landscape');
+          if(q&&q.catch)q.catch(function(){});
+        }catch(e){}
+      }};
+    if(r&&typeof r.then==='function')r.then(lock,lock);else lock();
+  }catch(e){}
+}
+let fsTried=false;
+function tryFS(){ if(fsTried)return; fsTried=true; if(IS_MOBILE)goFullscreen(); }
+['pointerdown','touchstart','keydown'].forEach(function(ev){
+  addEventListener(ev,tryFS,true);   // capture: срабатывает раньше кнопок
+});
+['fullscreenchange','webkitfullscreenchange','orientationchange'].forEach(function(ev){
+  addEventListener(ev,function(){
+    setTimeout(resize,80);
+    setTimeout(resize,300);   // размеры меняются не мгновенно
+  });
+});
+if(isTouch){
+  document.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
+  document.addEventListener('contextmenu',function(e){e.preventDefault();});
+  document.addEventListener('dblclick',function(e){e.preventDefault();});
+}
 
 // ---------- спрайт подопытного ----------
 const DUDE={
@@ -386,7 +440,7 @@ const LEVELS=[
  note:'В секторе зафиксированы помехи. Плёнка засвечена. Объект засвечен слегка.',
  signs:[{x:5,y:6,t:'ПОМЕХИ РВУТ ЗАПИСЬ'},{x:27,y:6,t:'ЗОНА ПОМЕХ'},{x:42,y:9,t:'ИМПУЛЬС · 3 СЕК'}]},
 {name:'ДВОЙНОЙ СЛЕПОЙ ОПЫТ',sub:'СЕКТОР Б-6',date:'03.12.1986',echo:3,dark:false,map:mapL6(),
- hint:'ТРИ ПЛИТЫ — ТРИ ШЛЮЗА · ЗАПИСИ ИДУТ ПАРАЛЛЕЛЬНО · СЧИТАЙ ДЛИНУ КАЖДОЙ',
+ hint:'ТРИ ПЛИТЫ — ТРИ ШЛЮЗА · ЗАПИСИ ИДУТ ПАРАЛЕЛЬНО · СЧИТАЙ ДЛИНУ КАЖДОЙ',
  note:'Двойной слепой опыт: объект и его записи действуют независимо. Результат — одинаков. Это беспокоит.',
  signs:[{x:4,y:6,t:'ПЛИТА-3 ЗА ШЛЮЗОМ-1'},{x:27,y:5,t:'ВВЕРХ — ПЛИТА-2'},{x:47,y:6,t:'ОБЪЕКТ НЕ ОДИН'}]},
 {name:'ИНТЕРФЕРЕНЦИЯ',sub:'СЕКТОР Б-7',date:'11.12.1986',echo:2,dark:false,map:mapL7(),
@@ -1085,7 +1139,8 @@ let SC=1;
 function resize(){
   const w=innerWidth,h=innerHeight;
   let s=Math.min(w/VW,h/VH);
-  if(s>1)s=Math.floor(s);
+  if(s>=2)s=Math.floor(s);   // целочисленный масштаб на больших экранах;
+                             // на телефонах (<2x) — дробный, чтобы заполнить экран
   SC=s;
   const st=document.getElementById('stage');
   st.style.width=VW*s+'px'; st.style.height=VH*s+'px';
@@ -1556,6 +1611,12 @@ function renderTitle(){
   uctx.fillText('ОТДЕЛ 07',0,-2); uctx.fillText('ДОПУЩЕНО',0,10);
   uctx.restore();
   uctx.textAlign='center';
+  if(IS_MOBILE){
+    uctx.font='9px "IBM Plex Mono",monospace';
+    uctx.fillStyle='rgba(200,205,200,.55)';
+    uctx.fillText(FS_OK?'КАСАНИЕ = ПОЛНЫЙ ЭКРАН И БЛОКИРОВКА ГОРИЗОНТАЛИ'
+      :'iOS: ДОБАВЬТЕ НА ЭКРАН «ДОМОЙ» — ИГРА ОТКРОЕТСЯ НА ВЕСЬ ЭКРАН',W/2,232);
+  }
   if((G.save.unlocked||0)>0){
     uctx.font='11px "Pixelify Sans",monospace';uctx.fillStyle=CYAN;
     uctx.fillText('◄  СЕКТОР '+pad(G.sel+1,2)+' · '+LEVELS[G.sel].name+'  ►',W/2,246);
@@ -1566,7 +1627,7 @@ function renderTitle(){
       :'[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
   }
   uctx.font='8px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.4)';
-  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 10',W/2,H-6);
+  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 11',W/2,H-6);
   uctx.textAlign='left';
 }
 function renderBrief(){
