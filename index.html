@@ -45,7 +45,8 @@
     padding:14px 32px;border-radius:4px;letter-spacing:2px;cursor:pointer;
     -webkit-appearance:none;appearance:none}
   #bootBtn:active{background:rgba(255,180,110,.22)}
-  #boot .h{font-size:8px;color:rgba(200,205,200,.35);margin-top:18px;letter-spacing:1px}
+  #boot .h{font-size:8px;color:rgba(200,205,200,.35);margin-top:18px;letter-spacing:1px;
+    max-width:90vw;line-height:1.8}
   #boot.on{display:flex}
   @media (orientation:portrait) and (pointer:coarse){#boot.on{display:none}}
 </style>
@@ -66,23 +67,23 @@
   <h1>ЭХО</h1>
   <div class="s">ЭКСПЕРИМЕНТ №9 · ХРОНОКАМЕРА «ПУЛЬСАР-7»</div>
   <button id="bootBtn">▶ НАЧАТЬ НАБЛЮДЕНИЕ</button>
-  <div class="h">полный экран · горизонталь · звук</div>
+  <div class="h">полный экран · звук · микрофон: сектор слушает, запись не передаётся</div>
 </div>
 <script>
 "use strict";
-console.log('ЭХО · сборка 12 (boot + внешние звуки) — если видите это, файл обновлён');
+console.log('ЭХО · сборка 14 (fullscreen-жест синхронный) — если видите это, файл обновлён');
 /* ============================================================
    ЭХО — эксперимент №9 · НИИ «ПУЛЬСАР» · хронокамера К-7
-   Блоки Б (10) + В (5) + 4 warp-сектора · лиминальный слой
-   Сборка 12: стартовый экран · snd/ внешние звуки + ambient
+   Сборка 14: синхронный fullscreen в обработчике жеста
+   (без setTimeout/then — жест не теряется) + самодиагностика
    ============================================================ */
 
 // ---------- константы ----------
 const TS=16, VW=480, VH=270;
 const GRAV=.34, JUMPV=-5.9, MAXVX=1.75, ACC=.28, FRIC=.3, MAXFALL=6.5;
 const P_W=8, P_H=13;
-const PULSE_T=168;   // импульсный шлюз: ~2.8 с
-const REC_BASE=150, REC_COIL=150;  // плёнка: 5 с база + 5 с за катушку (запись 30 кадров/с)
+const PULSE_T=168;
+const REC_BASE=150, REC_COIL=150;
 
 // ---------- утилиты ----------
 const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t;
@@ -90,7 +91,7 @@ function hash(x,y){let h=(x*374761393+y*668265263)|0;h=(h^(h>>13))*1274126177|0;
 const pad=(n,l)=>String(n).padStart(l,'0');
 
 // ---------- аудио (процедурный синтез) ----------
-const SFX={ctx:null,master:null,on:true,humG:null,
+const SFX={ctx:null,master:null,on:true,humG:null,buzz:null,
   init(){ if(this.ctx)return; try{
     const C=this.ctx=new (window.AudioContext||window.webkitAudioContext)();
     this.master=C.createGain(); this.master.gain.value=.55; this.master.connect(C.destination);
@@ -139,23 +140,40 @@ const SFX={ctx:null,master:null,on:true,humG:null,
   deny(){this.t(200,150,.12,'square',.08)},
   slam(){this.n(.5,90,.7,.10);this.t(70,38,.5,'sine',.09)},
   cough(){this.n(.09,700,1.4,.05);this.n(.12,500,1.2,.06,.14);this.n(.08,800,1.5,.04,.32)},
-  tapeStop(){this.t(1600,220,.22,'sine',.06);this.n(.12,3000,4,.04)}
+  tapeStop(){this.t(1600,220,.22,'sine',.06);this.n(.12,3000,4,.04)},
+  tick(){this.n(.03,2600,6,.05)},
+  startBuzz(){ if(!this.ctx||!this.on||this.buzz)return;
+    const C=this.ctx;
+    const o=C.createOscillator();o.type='sawtooth';o.frequency.value=96;
+    const lp=C.createBiquadFilter();lp.type='lowpass';lp.frequency.value=900;
+    const g=C.createGain();g.gain.value=.09;
+    const lfo=C.createOscillator();lfo.frequency.value=25;
+    const lg=C.createGain();lg.gain.value=.05;
+    lfo.connect(lg);lg.connect(g.gain);
+    o.connect(lp);lp.connect(g);g.connect(this.master);
+    o.start();lfo.start();
+    this.buzz={o:o,lfo:lfo,g:g};
+  },
+  stopBuzz(){ if(!this.buzz)return;
+    const C=this.ctx,b=this.buzz;this.buzz=null;
+    try{
+      b.g.gain.setTargetAtTime(0,C.currentTime,.05);
+      b.o.stop(C.currentTime+.3);b.lfo.stop(C.currentTime+.3);
+    }catch(e){}
+  }
 };
 
 // ============================================================
-//   ВНЕШНИЕ ЗВУКИ · файлы в папке snd/ рядом с index.html
-//   Нет файла — молча играет синтез. Работает по HTTP(S).
-//   Загрузка стартует после первого касания (политика браузеров).
+//   ВНЕШНИЕ ЗВУКИ · snd/ (необязательно; нет — играет синтез)
 // ============================================================
 (function(){
   const DIR='snd';
-  const FORMATS=['mp3','ogg','wav','m4a'];        // порядок попыток
+  const FORMATS=['mp3','ogg','wav','m4a'];
   const NAMES=['jump','land','step','plate','door','door_open','door_close',
     'rec_on','rec_beep','echo','echo_die','coil','pulse','death','win',
     'deny','slam','cough','tape_stop'];
-  const AMB_NAMES=['ambient','background','fon'];  // фоновый: первый найденный
-  const EXT_VOL=0.9;     // громкость внешних эффектов
-  const AMB_VOL=0.35;    // громкость фонового трека
+  const AMB_NAMES=['ambient','background','fon'];
+  const EXT_VOL=0.9, AMB_VOL=0.35;
   const ext=SFX.ext={};
   let started=false,ambSrc=null,ambGain=null;
 
@@ -186,7 +204,6 @@ const SFX={ctx:null,master:null,on:true,humG:null,
     let key=null;
     for(const n of AMB_NAMES){ if(ext[n]){key=n;break;} }
     if(!key||ambSrc)return;
-    // внешний фон найден — приглушаем встроенный гул завода
     if(SFX.humG&&SFX.ctx){
       try{SFX.humG.gain.setTargetAtTime(.008,SFX.ctx.currentTime,1);}catch(e){}
     }
@@ -205,7 +222,6 @@ const SFX={ctx:null,master:null,on:true,humG:null,
   const _init=SFX.init.bind(SFX);
   SFX.init=function(){ _init(); if(SFX.ctx)start(); };
 
-  // подмена синтеза: если файл есть — играет файл
   const MO={jump:'jump',land:'land',step:'step',plate:'plate',
     recOn:'rec_on',recBeep:'rec_beep',echo:'echo',echoDie:'echo_die',
     coil:'coil',pulse:'pulse',death:'death',win:'win',deny:'deny',
@@ -225,12 +241,172 @@ const SFX={ctx:null,master:null,on:true,humG:null,
   };
 })();
 
+// ============================================================
+//   МИКРОФОН · лаборатория слушает (всё в памяти, никуда не
+//   передаётся; отказ = игра живёт без него)
+// ============================================================
+const MIC={asked:false,granted:false,enabled:true,level:0,
+  buffer:null,bufLen:0,writeIdx:0,
+  init(){
+    if(this.asked)return;
+    this.asked=true;
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return;
+    const self=this;
+    navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})
+      .then(function(stream){
+        const C=SFX.ctx;
+        if(!C){stream.getTracks().forEach(function(t){t.stop();});return;}
+        const src=C.createMediaStreamSource(stream);
+        const proc=C.createScriptProcessor(4096,1,1);
+        const N=(C.sampleRate*40)|0;      // кольцевой буфер ~40 сек
+        self.buffer=new Float32Array(N);self.bufLen=N;self.writeIdx=0;
+        proc.onaudioprocess=function(e){
+          const inp=e.inputBuffer.getChannelData(0);
+          let sum=0;
+          for(let i=0;i<inp.length;i++){
+            sum+=inp[i]*inp[i];
+            self.buffer[self.writeIdx]=inp[i];
+            self.writeIdx=(self.writeIdx+1)%N;
+          }
+          self.level=Math.sqrt(sum/inp.length);
+        };
+        src.connect(proc);
+        const mute=C.createGain();mute.gain.value=0;
+        proc.connect(mute);mute.connect(C.destination);
+        self.granted=true;
+      })
+      .catch(function(){self.granted=false;});
+  },
+  play(dur,mode,vol){
+    if(!SFX.on||!SFX.ctx||!this.granted||!this.enabled||!this.buffer)return false;
+    const C=this.ctx||SFX.ctx,sr=C.sampleRate;
+    const len=Math.min(Math.max(1,(dur*sr)|0),this.bufLen);
+    const start=(this.writeIdx-len+this.bufLen)%this.bufLen;
+    const out=new Float32Array(len);
+    for(let i=0;i<len;i++)out[i]=this.buffer[(start+i)%this.bufLen];
+    if(mode==='whisper'||mode==='hall'){
+      for(let i=0;i<(len>>1);i++){const t=out[i];out[i]=out[len-1-i];out[len-1-i]=t;}
+    }
+    const buf=C.createBuffer(1,len,sr);
+    buf.getChannelData(0).set(out);
+    const src=C.createBufferSource();src.buffer=buf;
+    if(mode==='hall')src.playbackRate.value=.55;
+    let node=src;
+    const lp=C.createBiquadFilter();lp.type='lowpass';
+    lp.frequency.value=mode==='whisper'?500:380;
+    node.connect(lp);node=lp;
+    if(mode==='whisper'||mode==='hall'){
+      const g=C.createGain();g.gain.value=.55;
+      const osc=C.createOscillator();osc.frequency.value=mode==='whisper'?42:24;
+      const og=C.createGain();og.gain.value=.45;
+      osc.connect(og);og.connect(g.gain);
+      osc.start();osc.stop(C.currentTime+dur+.1);
+      node.connect(g);node=g;
+    }
+    const outG=C.createGain();outG.gain.value=vol;
+    node.connect(outG);outG.connect(SFX.master);
+    src.start();
+    return true;
+  }
+};
+
+// ============================================================
+//   ДАТЧИКИ · ориентация + тряска (сектор Б-5-А ПЕЛЕНГ)
+// ============================================================
+const SENS={ok:false,hasOrient:false,alpha:0,shake:0,
+  init(){
+    const self=this;
+    function attach(){
+      addEventListener('deviceorientation',function(e){
+        self.hasOrient=true;
+        if(e.webkitCompassHeading!=null)self.alpha=e.webkitCompassHeading;
+        else if(e.alpha!=null)self.alpha=e.alpha;
+      });
+      addEventListener('devicemotion',function(e){
+        const imp=e.acceleration;
+        if(imp){
+          const m=Math.abs(imp.x||0)+Math.abs(imp.y||0)+Math.abs(imp.z||0);
+          if(m>18)self.shake=Math.max(self.shake,30);
+        }
+      });
+      self.ok=true;
+    }
+    try{
+      const DOE=window.DeviceOrientationEvent;
+      let p=Promise.resolve();
+      if(DOE&&typeof DOE.requestPermission==='function'){
+        p=DOE.requestPermission().then(function(r){
+          if(r!=='granted')throw 0;
+          const DME=window.DeviceMotionEvent;
+          if(DME&&typeof DME.requestPermission==='function'){
+            return DME.requestPermission().catch(function(){});
+          }
+        });
+      }
+      return p.then(attach,function(){self.ok=false;});
+    }catch(e){self.ok=false;return Promise.resolve();}
+  }
+};
+
+// ============================================================
+//   УВБ-76 · шифровки из intel/ (фолбэк — синтетика)
+// ============================================================
+const UVB_LORE={
+  '05':'объект в секторе','76':'продолжайте наблюдение','17':'не отвечать',
+  '28':'запись подтверждена','93':'выход не обозначен','14':'канал свободен',
+  '59':'не считать случайным','24':'повторить попытку','99':'эвакуация отменена'
+};
+function genBroadcast(){
+  const heads=['МДЖБ','УВБ 76','НЗФИ','ЖУОЗ'];
+  const words=['БРАВ','ГОС','ЛОМ','МАЙ','ОКО','СНА','ДЖИН'];
+  const n=function(){return 10+((Math.random()*89)|0);};
+  const keys=Object.keys(UVB_LORE);
+  return {d:'--.--',
+    t:heads[(Math.random()*heads.length)|0]+' '+words[(Math.random()*words.length)|0]
+      +' '+n()+' '+n()+' '+n()+' '+n(),
+    tag:keys[(Math.random()*keys.length)|0]};
+}
+function loadUVB(){
+  fetch('intel/broadcasts.json').then(function(r){
+    if(!r.ok)throw 0;
+    return r.json();
+  }).then(function(a){
+    if(Array.isArray(a)&&a.length)G.uvb=a;
+  }).catch(function(){});
+}
+function pickBroadcast(){
+  if(G.uvb&&G.uvb.length)return G.uvb[(Math.random()*G.uvb.length)|0];
+  return genBroadcast();
+}
+function fetchVoice(name,rec){
+  fetch('intel/voice/'+name).then(function(r){
+    if(!r.ok)throw 0;
+    return r.arrayBuffer();
+  }).then(function(ab){
+    return new Promise(function(res,rej){SFX.ctx.decodeAudioData(ab,res,rej);});
+  }).then(function(buf){rec.voiceBuf=buf;}).catch(function(){});
+}
+function playVoiceBuf(buf){
+  if(!SFX.ctx||!SFX.on||!buf)return;
+  const s=SFX.ctx.createBufferSource();s.buffer=buf;
+  const g=SFX.ctx.createGain();g.gain.value=.85;
+  s.connect(g);g.connect(SFX.master);s.start();
+}
+
 // ---------- ввод ----------
 const Keys={},JP=new Set();
 const MAP={ArrowLeft:'L',KeyA:'L',ArrowRight:'R',KeyD:'R',ArrowUp:'J',KeyW:'J',Space:'J',
-  KeyE:'E',KeyQ:'Q',KeyR:'RS',KeyM:'M',Escape:'ESC',Enter:'OK',ArrowDown:'D'};
+  KeyE:'E',KeyQ:'Q',KeyR:'RS',KeyM:'M',KeyK:'K',KeyZ:'Z',KeyX:'X',
+  Escape:'ESC',Enter:'OK',ArrowDown:'D'};
+let firstAct=false;
+function firstAction(){
+  if(firstAct)return; firstAct=true;
+  SFX.init();
+  MIC.init();
+  loadUVB();
+}
 addEventListener('keydown',function(e){const k=MAP[e.code];
-  if(k){if(!Keys[k])JP.add(k);Keys[k]=1;e.preventDefault();}SFX.init();});
+  if(k){if(!Keys[k])JP.add(k);Keys[k]=1;e.preventDefault();}firstAction();});
 addEventListener('keyup',function(e){const k=MAP[e.code];if(k)Keys[k]=0;});
 addEventListener('blur',function(){
   for(const k in Keys)Keys[k]=0;
@@ -240,17 +416,20 @@ const isTouch=('ontouchstart' in window);
 if(isTouch)document.getElementById('touch').style.display='block';
 [['tL','L'],['tR','R'],['tJ','J'],['tE','E'],['tQ','Q'],['tP','ESC']].forEach(function(pair){
   const el=document.getElementById(pair[0]);
-  el.addEventListener('pointerdown',function(e){e.preventDefault();e.stopPropagation();SFX.init();
+  el.addEventListener('pointerdown',function(e){e.preventDefault();e.stopPropagation();firstAction();
     if(!Keys[pair[1]])JP.add(pair[1]);Keys[pair[1]]=1;});
   el.addEventListener('pointerup',function(){Keys[pair[1]]=0;});
   el.addEventListener('pointerleave',function(){Keys[pair[1]]=0;});
 });
 document.getElementById('stage').addEventListener('pointerdown',function(e){
-  SFX.init();
+  firstAction();
   if(!e.target.classList.contains('tb'))JP.add('OK');
 });
 
-// ---------- мобильный полный экран ----------
+// ---------- мобильный полный экран (сборка 14) ----------
+// КЛЮЧЕВОЕ: requestFullscreen вызывается СИНХРОННО внутри обработчика
+// жеста. Никаких setTimeout/then между тапом и вызовом — иначе браузер
+// считает, что жеста не было, и молча отказывает.
 const IS_MOBILE=isTouch&&(function(){
   try{return matchMedia('(pointer:coarse)').matches;}catch(e){return false;}})();
 const FS_OK=(function(){const el=document.documentElement;
@@ -258,19 +437,27 @@ const FS_OK=(function(){const el=document.documentElement;
 function goFullscreen(){
   const el=document.documentElement;
   const fn=el.requestFullscreen||el.webkitRequestFullscreen;
-  if(!fn)return;
-  try{
-    const r=fn.call(el);
-    const lock=function(){
-      if(screen.orientation&&screen.orientation.lock){
-        try{
-          const q=screen.orientation.lock('landscape');
-          if(q&&q.catch)q.catch(function(){});
-        }catch(e){}
-      }};
-    if(r&&typeof r.then==='function')r.then(lock,lock);else lock();
-  }catch(e){}
+  if(!fn)return false;
+  try{ fn.call(el); }catch(e){}
+  // ориентацию блокируем ПОСЛЕ входа — это можно асинхронно
+  const lock=function(){
+    if(screen.orientation&&screen.orientation.lock){
+      try{
+        const q=screen.orientation.lock('landscape');
+        if(q&&q.catch)q.catch(function(){});
+      }catch(e){}
+    }};
+  const onFs=function(){
+    lock();
+    removeEventListener('fullscreenchange',onFs);
+    removeEventListener('webkitfullscreenchange',onFs);
+  };
+  addEventListener('fullscreenchange',onFs);
+  addEventListener('webkitfullscreenchange',onFs);
+  setTimeout(lock,400);   // страховка, если событие не пришло
+  return true;
 }
+// подстраховка: первый жест где угодно на странице
 let fsTried=false;
 function tryFS(){ if(fsTried)return; fsTried=true; if(IS_MOBILE)goFullscreen(); }
 ['pointerdown','touchstart','keydown'].forEach(function(ev){
@@ -287,17 +474,30 @@ if(isTouch){
   document.addEventListener('contextmenu',function(e){e.preventDefault();});
   document.addEventListener('dblclick',function(e){e.preventDefault();});
 }
-
-// стартовый экран: клик = жест пользователя → fullscreen гарантирован
+// стартовый экран с самодиагностикой: если браузер отказал —
+// заставка напишет причину и User-Agent; второй тап — вход без фулскрина
 (function(){
-  if(!IS_MOBILE)return;               // на десктопе — сразу титул
+  if(!IS_MOBILE)return;
   const boot=document.getElementById('boot');
+  const hint=boot.querySelector('.h');
+  let clicked=0;
   boot.classList.add('on');
   boot.addEventListener('click',function(e){
     e.preventDefault();
-    SFX.init();                       // разблокировка звука — тоже требует жеста
-    tryFS();                          // полный экран + блокировка горизонтали
-    boot.classList.remove('on');
+    firstAction();
+    clicked++;
+    if(clicked>1){boot.classList.remove('on');return;}   // вход без полного экрана
+    goFullscreen();                                     // синхронно, прямо в жесте
+    setTimeout(function(){
+      const on=document.fullscreenElement||document.webkitFullscreenElement;
+      if(on){boot.classList.remove('on');return;}
+      let ua='';
+      const m=navigator.userAgent.match(/\(([^)]+)\)/);
+      if(m&&m[1])ua=m[1].slice(0,52);
+      hint.textContent=(FS_OK?'ОТКАЗ БРАУЗЕРА · ':'SAFARI iOS: FULLSCREEN API НЕТ · ')
+        +ua+' · ТАП ЕЩЁ РАЗ — ВОЙТИ БЕЗ ПОЛНОГО ЭКРАНА';
+      hint.style.color='rgba(255,120,90,.85)';
+    },700);
   });
 })();
 
@@ -322,7 +522,7 @@ function drawDude(g,x,y,fr,face,pal,alpha){
 }
 
 // ============================================================
-//     ПОСТРОИТЕЛЬ КАРТ (border() — границы; НЕ frame())
+//     ПОСТРОИТЕЛЬ КАРТ
 // ============================================================
 function mkGrid(H,W){const m=[];for(let y=0;y<H;y++)m.push(new Array(W).fill('.'));return m;}
 function box(m,x0,y0,x1,y1,c){
@@ -373,6 +573,18 @@ function mapL5(){const W=72,H=14,m=mkGrid(H,W);border(m);
   m[12][30]='^';m[12][31]='^';m[10][28]='o';m[10][5]='o';
   m[12][52]='^';m[12][53]='^';
   box(m,62,11,66,11,'=');m[9][64]='o';
+  return join(m);}
+
+// Б-5-А ПЕЛЕНГ: шлюз-5 открывается реальным поворотом устройства
+function mapL5B(){const W=64,H=14,m=mkGrid(H,W);border(m);
+  box(m,1,12,62,12,'#');
+  box(m,30,6,30,10,'E');
+  box(m,18,9,22,9,'#');m[8][20]='o';
+  m[12][10]='o';
+  box(m,40,9,44,9,'#');m[8][42]='o';
+  m[12][50]='^';m[12][51]='^';
+  m[11][48]='R';
+  m[12][3]='P';m[12][57]='F';
   return join(m);}
 
 function mapL6(){const W=72,H=14,m=mkGrid(H,W);border(m);
@@ -428,7 +640,6 @@ function mapL10(){const W=104,H=15,m=mkGrid(H,W);border(m);
   m[13][82]='^';m[13][83]='^';
   return join(m);}
 
-// ---------- блок В ----------
 function mapV1(){const W=30,H=22,m=mkGrid(H,W);border(m);
   box(m,1,20,28,20,'#');
   box(m,12,4,12,13,'#');
@@ -501,9 +712,9 @@ function mapV5(){const W=88,H=26,m=mkGrid(H,W);border(m);
   m[23][64]='4';m[23][68]='o';
   box(m,72,19,72,23,'D');
   m[23][80]='F';
+  m[21][76]='R';
   return join(m);}
 
-// ---------- warp-секторы ----------
 function mapW1(){const W=80,H=14,m=mkGrid(H,W);border(m);
   box(m,10,11,14,12,'#');box(m,30,11,34,12,'#');box(m,50,11,54,12,'#');
   m[12][3]='P';m[12][70]='F';
@@ -526,6 +737,7 @@ function mapW3(){const W=76,H=13,m=mkGrid(H,W);border(m);
 function mapW4(){const W=96,H=10,m=mkGrid(H,W);border(m);
   for(let s=0;s<8;s++)m[8][s*12+9]='o';
   m[8][2]='P';
+  m[7][40]='R';
   return join(m);}
 
 // ---------- данные уровней ----------
@@ -550,6 +762,10 @@ const LEVELS=[
  hint:'ПОМЕХИ СРЫВАЮТ ЗАПИСЬ И УНИЧТОЖАЮТ ЭХО · ЖЁЛТАЯ ПЛИТА — ИМПУЛЬС: ШЛЮЗ ОТКРЫТ 3 СЕК',
  note:'В секторе зафиксированы помехи. Плёнка засвечена. Объект засвечен слегка.',
  signs:[{x:5,y:6,t:'ПОМЕХИ РВУТ ЗАПИСЬ'},{x:27,y:6,t:'ЗОНА ПОМЕХ'},{x:42,y:9,t:'ИМПУЛЬС · 3 СЕК'}]},
+{name:'ПЕЛЕНГ',sub:'СЕКТОР Б-5-А',date:'02.12.1986',echo:1,dark:false,map:mapL5B(),beacon:true,
+ hint:'ПОВЕРНИ УСТРОЙСТВО НА ЗАДАННЫЙ ПЕЛЕНГ · УДЕРЖИ ±15° 2.5 СЕК — ШЛЮЗ-5 · ДЕСКТОП: Z/X',
+ note:'Помехи локализованы не в секторе, а в помещении наблюдателя. Для калибровки антенны объекту предписан разворот по азимуту. Физический.',
+ signs:[{x:2,y:6,t:'ПЕЛЕНГ = ТЫ'},{x:26,y:5,t:'ШЛЮЗ-5 · ПЕЛЕНГОВЫЙ'},{x:44,y:9,t:'4625 КГЦ'}]},
 {name:'ДВОЙНОЙ СЛЕПОЙ ОПЫТ',sub:'СЕКТОР Б-6',date:'03.12.1986',echo:3,dark:false,map:mapL6(),
  hint:'ТРИ ПЛИТЫ — ТРИ ШЛЮЗА · ЗАПИСИ ИДУТ ПАРАЛЛЕЛЬНО · СЧИТАЙ ДЛИНУ КАЖДОЙ',
  note:'Двойной слепой опыт: объект и его записи действуют независимо. Результат — одинаков. Это беспокоит.',
@@ -563,7 +779,7 @@ const LEVELS=[
  note:'Объект спускается всё глубже. Эхо возвращаются всё охотнее. Спускаются тоже.',
  signs:[{x:3,y:6,t:'ЭТАЖ 1'},{x:2,y:13,t:'ЭТАЖ 2'},{x:9,y:20,t:'ЭТАЖ 3 · ИМПУЛЬС'},{x:5,y:27,t:'РЕАКТОРНЫЙ ЗАЛ'}]},
 {name:'ТИХИЙ ЭТАЖ',sub:'СЕКТОР Б-9',date:'24.12.1986',echo:1,dark:true,map:mapL9(),
- hint:'ОСВЕЩЕНИЕ ОТКЛЮЧЕНО · СВЕТЯТСЯ КАТУШКИ, ШЛЮЗЫ И ТЫ',
+ hint:'ОСВЕЩЕНИЕ ОТКЛЮЧЕНО · СВЕТЯТСЯ КАТУШКИ, ШЛЮЗЫ И ТЫ · СИДИ ТИШЕ: СЕКТОР СЛЫШИТ',
  note:'Освещение сектора отключено за неуплату. Объект светится самостоятельно. Экономия утверждена.',
  signs:[{x:2,y:8,t:'ТИХО'},{x:19,y:8,t:'ПЛИТА-1'},{x:46,y:8,t:'ПОЧТИ ВСЁ'}]},
 {name:'ЭХО',sub:'СЕКТОР Б-10',date:'31.12.1986',echo:3,dark:false,map:mapL10(),
@@ -592,8 +808,8 @@ const LEVELS=[
  signs:[{x:2,y:20,t:'ПОСЛЕДНЯЯ ПЛЁНКА'},{x:31,y:19,t:'СТАТИКА'},{x:53,y:20,t:'ДЕРЖИТ ЭХО-1'},{x:66,y:20,t:'ИМПУЛЬС'}]}
 ];
 
-// ---------- warp-секторы (вне плана института) ----------
-const MAIN_COUNT=LEVELS.length;   // 15 основных; дальше — warp
+// ---------- warp-секторы ----------
+const MAIN_COUNT=LEVELS.length;   // 16 основных
 LEVELS.push(
 {name:'РАЗМНОЖЕНИЕ',sub:'СЕКТОР Н/Д',date:'--.--.----',echo:0,dark:false,map:mapW1(),clones:14,
  hint:'МАТЕРИАЛ НЕ КЛАССИФИЦИРОВАН',
@@ -613,13 +829,13 @@ LEVELS.push(
  signs:[{x:2,y:6,t:'КОРИДОР'},{x:14,y:6,t:'КОРИДОР'},{x:26,y:6,t:'КОРИДОР'},{x:38,y:6,t:'КОРИДОР'}]}
 );
 
-// тайные проходы (в тайлах; для игрока — никак не обозначены)
-LEVELS[0].warps=[{x:51,y:10,type:'wall',to:16}];   // Б-1: стена за выходом → ЗЕРКАЛО
-LEVELS[3].warps=[{x:20,y:29,type:'acid',to:17}];   // Б-4: левый край лужи → ПОТОЛОК
-LEVELS[5].warps=[{x:71,y:12,type:'wall',to:15}];   // Б-6: стена за выходом → РАЗМНОЖЕНИЕ
-LEVELS[8].warps=[{x:63,y:12,type:'wall',to:18}];   // Б-9: стена в темноте → КОРИДОР
-LEVELS[11].warps=[{x:26,y:22,type:'acid',to:15}];  // В-2: правый край первой лужи → РАЗМНОЖЕНИЕ
-LEVELS[13].warps=[{x:52,y:14,type:'acid',to:18}];  // В-4: левая кислота у выхода → КОРИДОР
+// тайные проходы
+LEVELS[0].warps=[{x:51,y:10,type:'wall',to:17}];   // Б-1 → ЗЕРКАЛО
+LEVELS[3].warps=[{x:20,y:29,type:'acid',to:18}];   // Б-4 → ПОТОЛОК
+LEVELS[6].warps=[{x:71,y:12,type:'wall',to:16}];   // Б-6 → РАЗМНОЖЕНИЕ
+LEVELS[9].warps=[{x:63,y:12,type:'wall',to:19}];   // Б-9 → КОРИДОР
+LEVELS[12].warps=[{x:26,y:22,type:'acid',to:16}];  // В-2 → РАЗМНОЖЕНИЕ
+LEVELS[14].warps=[{x:52,y:14,type:'acid',to:19}];  // В-4 → КОРИДОР
 
 const TOTAL_COILS=LEVELS.slice(0,MAIN_COUNT).reduce(function(a,l){return a+l.map.join('').split('o').length-1;},0);
 
@@ -629,7 +845,8 @@ const G={state:'title',lvlIdx:0,sel:0,t:0,lt:0,deaths:0,paused:false,
   wipe:0,wipeDir:0,shake:0,glitch:0,winT:0,finalShown:0,player:null,rec:null,cam:{x:0,y:0},
   film:null,filmAt:0,watch:null,watchDone:false,idleT:0,path:[],tcGlitch:0,
   palPlayer:null,palEcho:null,
-  warpTo:null,retIdx:null,mirror:false,flipG:false,endless:false,wraps:0,clones:[],cloneQueue:0};
+  warpTo:null,retIdx:null,mirror:false,flipG:false,endless:false,wraps:0,clones:[],cloneQueue:0,
+  uvb:null,course:0,micNoise:0,sensorBusy:false};
 (function(){
   let s=null;
   try{s=JSON.parse(localStorage.getItem('echo9')||'null');}catch(e){s=null;}
@@ -655,11 +872,12 @@ function loadLevel(i){
   const H=rows.length,W=rows[0].length;
   const grid=rows.map(function(r){return r.padEnd(W,'#');});
   const L={def:def,W:W,H:H,grid:grid,doors:[],plates:[],coils:[],spikes:[],acid:[],noise:[],
-    platforms:[],lamps:[],echoLimit:def.echo,dark:!!def.dark,ch4t:0,
+    receivers:[],platforms:[],lamps:[],echoLimit:def.echo,dark:!!def.dark,ch4t:0,
+    beacon:null,beaconHold:0,beaconLock:false,beaconDiff:0,
     spawn:{x:32,y:32},exit:null,coilsGot:0,totalCoils:0};
   for(let x=0;x<W;x++){let y=0;
     while(y<H){const ch=grid[y][x];
-      if(ch==='A'||ch==='B'||ch==='C'||ch==='D'){
+      if(ch==='A'||ch==='B'||ch==='C'||ch==='D'||ch==='E'){
         let y0=y;const ch2=ch;
         while(y<H&&grid[y][x]===ch2)y++;
         L.doors.push({ch:ch2.charCodeAt(0)-64,x:x,y0:y0,y1:y-1,open:0,prevOpen:0,closing:false});
@@ -671,6 +889,8 @@ function loadLevel(i){
     else if(ch==='^')L.spikes.push({x:x,y:y});
     else if(ch==='~')L.acid.push({x:x,y:y,top:!(y>0&&grid[y-1][x]==='~')});
     else if(ch==='@')L.noise.push({x:x,y:y});
+    else if(ch==='R')L.receivers.push({x:x,y:y,on:false,text:null,shown:0,
+      printing:false,tag:null,lore:null,voice:null,voiceBuf:null,tryPlay:0});
     else if(ch==='P')L.spawn={x:x*TS+4,y:y*TS+TS-P_H};
     else if(ch==='F')L.exit={x:x,y:y};
     else if(ch==='*')L.platforms.push({cx:x,cy:y,w:TS*3,h:8,ph:hash(x,y)*6.28,
@@ -695,9 +915,13 @@ function loadLevel(i){
     animT:0,onPlat:null,dead:false,deadT:0,stepT:0,w:P_W,h:P_H};
   G.rec={active:false,frames:[],tick:0,beep:0,maxLen:REC_BASE};
   G.cam={x:clamp(L.spawn.x-VW/2,0,Math.max(0,L.W*TS-VW)),y:camY(L.spawn.y)};
+  if(def.beacon){
+    const base=(SENS.hasOrient?SENS.alpha:G.course)||0;
+    L.beacon={target:(base+90+Math.random()*180)%360};
+  }
   // --- лиминальный слой ---
   L.marks=(G.save.marks[i]||[]).slice(0,10);
-  L.coughed=false;
+  L.coughed=false;L.micNoted=false;
   G.film=null;G.watch=null;G.watchDone=false;G.idleT=0;G.path=[];
   G.filmAt=1300+((Math.random()*4200)|0);
   G.palPlayer=G.save.looped?PAL_E:PAL_P;
@@ -712,6 +936,8 @@ function loadLevel(i){
     L.lamps=[];
     for(let s=0;s<8;s++)L.lamps.push({x:(s*12+6)*TS+8,y:24,red:s===4,seed:.5});
   }
+  SFX.stopBuzz();
+  G.sensorBusy=false;
   buildCache();
   msg(def.hint,420);
 }
@@ -725,7 +951,7 @@ function solidT(tx,ty){const L=G.lvl;
   if(tx<0||tx>=L.W)return '#';
   if(ty<0)return '#';
   if(ty>=L.H)return '.';
-  if(L.fakes&&L.fakes[tx+','+ty])return '.';   // фальш-стена: проходима
+  if(L.fakes&&L.fakes[tx+','+ty])return '.';
   return L.grid[ty][tx]==='#'?'#':'.';}
 
 const overlap=function(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;};
@@ -756,7 +982,7 @@ function tileCollide(e){
   else if(e.vy<0){const ty=Math.floor(e.y/TS);
     for(let tx=x0;tx<=x1;tx++)if(solidT(tx,ty)==='#'){
       e.y=(ty+1)*TS+0.01;e.vy=0;
-      if(G.flipG)e.ground=true;   // перевёрнутая гравитация: потолок — это пол
+      if(G.flipG)e.ground=true;
       break;}}
   for(const d of L.doors){const r=doorRect(d);
     if(r.h>0&&overlap(e,r)){
@@ -819,7 +1045,6 @@ function stepEchoes(){
       const a=e.frames[i],b=e.frames[Math.min(i+1,e.frames.length-1)];
       if(a&&b){e.x=lerp(a.x,b.x,f);e.y=lerp(a.y,b.y,f);e.face=b.fc;e.fr=b.fr;}
       if(G.lt%3===0)G.parts.push({x:e.x+4,y:e.y+6,vx:(Math.random()-.5)*.3,vy:-.15,life:22,c:'#7df3e8',s:1,g:0});
-      // плёнка кончилась: эхо повторило запись — и растворилось
       if(e.t>=e.frames.length-1){e.playing=false;echoEnd(e);continue;}
     }
     if(entNoise(e.x,e.y,P_W,P_H)){echoDie(e);continue;}
@@ -846,18 +1071,30 @@ function burst(x,y,c,n){
 // ---------- главный шаг ----------
 function step(){
   G.t++;
+  if(SENS.shake>0)SENS.shake--;
   if(G.wipeDir!==0){
     G.wipe+=G.wipeDir*0.045;
     if(G.wipeDir>0&&G.wipe>=1){G.wipe=1;G.wipeDir=0;afterWipe();}
     else if(G.wipeDir<0&&G.wipe<=0){
       G.wipe=0;G.wipeDir=0;
-      if(G.state==='wipe')G.state='play';
+      if(G.state==='wipe')
+        G.state=(G.lvl&&G.lvl.def.beacon)?'sensor':'play';
     }
   }
   if(G.state==='play'){
     if(G.paused){
       if(JP.has('ESC')||JP.has('OK'))G.paused=false;
     } else { G.lt++; stepPlay(); }
+  }
+  else if(G.state==='sensor'){
+    if(JP.has('OK')&&!G.sensorBusy){
+      G.sensorBusy=true;
+      Promise.resolve(SENS.init()).then(function(){
+        G.course=SENS.hasOrient?((SENS.alpha+360)%360):0;
+        G.state='play';G.sensorBusy=false;
+        msg('АЗИМУТ ЗАДАН · ДЕРЖИ ПЕЛЕНГ',150);
+      });
+    }
   }
   else if(G.state==='title'){
     const n=(G.save.unlocked||0)+1;
@@ -896,10 +1133,8 @@ function stepPlay(){
     if(G.winT>62)startWipe();
     return; }
   if(JP.has('ESC')){G.paused=true;return;}
-  // тихая архивная плёнка: пишем весь путь
   if(G.lt%6===0){G.path.push({x:P.x,y:P.y,fc:P.face});
     if(G.path.length>2400)G.path.shift();}
-  // движение (в ЗЕРКАЛЕ управление отражено)
   let dir=(Keys.R?1:0)-(Keys.L?1:0);
   if(G.mirror)dir=-dir;
   if(dir!==0){P.vx=clamp(P.vx+dir*ACC,-MAXVX,MAXVX);P.face=dir;}
@@ -928,7 +1163,11 @@ function stepPlay(){
   if(JP.has('Q'))clearEchoes();
   if(JP.has('RS')){loadLevel(G.lvlIdx);msg('СЕКТОР ПЕРЕЗАПУЩЕН',120);return;}
   if(JP.has('M')){SFX.on=!SFX.on;SFX.setAmbMute(!SFX.on);msg(SFX.on?'ЗВУК: ВКЛ':'ЗВУК: ВЫКЛ',90);}
-  // запись: длина плёнки = катушки; подбор катушки удлиняет на ходу
+  if(JP.has('K')){
+    if(!MIC.granted)msg('МИКРОФОН НЕДОСТУПЕН',80);
+    else{MIC.enabled=!MIC.enabled;
+      msg(MIC.enabled?'МИКРОФОН: ЛАБОРАТОРИЯ СЛУШАЕТ':'МИКРОФОН: ВЫКЛ',90);}
+  }
   if(G.rec.active){
     G.rec.tick++;
     if(G.rec.tick>=2){G.rec.tick=0;
@@ -940,7 +1179,8 @@ function stepPlay(){
     if(G.rec.beep>(warn?18:45)){G.rec.beep=0;SFX.recBeep();}
     if(entNoise(P.x,P.y,P_W,P_H)){msg('ПОМЕХИ: ЗАПИСЬ СОРВАНА',130);stopRec(true);}
   }
-  const ch=[false,false,false,false];
+  // ---- каналы плит/шлюзов ----
+  const ch=[false,false,false,false,false];
   for(const pl of L.plates){
     pl.wasP=pl.press; pl.press=0;
     const r={x:pl.x*TS+2,y:pl.y*TS+9,w:12,h:7};
@@ -954,6 +1194,34 @@ function stepPlay(){
     if(pl.ch!==4&&pl.press)ch[pl.ch-1]=true;
   }
   if(L.ch4t>0){L.ch4t--;ch[3]=true;}
+  // ---- ПЕЛЕНГ (шлюз-5) ----
+  if(L.beacon){
+    if(SENS.hasOrient){
+      G.course=(SENS.alpha+360)%360;
+    } else {
+      const rot=(Keys.X?1:0)-(Keys.Z?1:0);
+      if(rot)G.course=(G.course+rot*2.4+360)%360;
+      else if(isTouch){
+        G.course=(G.course+Math.sign(L.beaconDiff||1)*.9+360)%360;
+      }
+    }
+    let diff=Math.abs(((G.course-L.beacon.target)%360+360)%360);
+    if(diff>180)diff=360-diff;
+    L.beaconDiff=diff;
+    const capW=L.beaconLock?25:15;
+    if(diff<capW){
+      L.beaconHold=Math.min(L.beaconHold+1,600);
+      if(!L.beaconLock&&L.beaconHold>=150){
+        L.beaconLock=true;SFX.pulse();
+        msg('ПЕЛЕНГ ЗАХВАЧЕН · ШЛЮЗ-5 ОТКРЫТ',90);
+      }
+      if(L.beaconLock&&G.lt%40===0)SFX.recBeep();
+    } else {
+      if(L.beaconHold>0)L.beaconHold=Math.max(0,L.beaconHold-2);
+      if(L.beaconLock){L.beaconLock=false;msg('ПЕЛЕНГ ПОТЕРЯН',70);SFX.deny();}
+    }
+    if(L.beaconLock)ch[4]=true;
+  }
   for(const d of L.doors){
     d.prevOpen=d.open;
     const target=ch[d.ch-1]?1:0;
@@ -968,6 +1236,52 @@ function stepPlay(){
     if((d.open>0.02)!==(d.prevOpen>0.02))SFX.door(d.open>0.02);
   }
   stepEchoes();
+  // ---- приёмники УВБ-76 ----
+  for(const r of L.receivers){
+    const rx=r.x*TS+8,ry=r.y*TS+8;
+    const near=Math.abs(P.x+4-rx)<52&&Math.abs(P.y+6-ry)<64;
+    if(near&&!r.on){
+      r.on=true;
+      SFX.startBuzz();
+      const rec=pickBroadcast();
+      r.text=rec.t;r.tag=rec.tag;r.lore=UVB_LORE[rec.tag]||null;
+      r.voice=rec.voice||null;r.voiceBuf=null;
+      r.shown=0;r.printing=true;r.tryPlay=0;
+      if(r.voice)fetchVoice(r.voice,r);
+    }
+    if(!near&&r.on){
+      r.on=false;r.printing=false;
+      SFX.stopBuzz();
+    }
+    if(r.on&&r.printing){
+      if(r.shown<r.text.length){
+        if(G.t%7===0){r.shown++;SFX.tick();}
+      } else {
+        r.printing=false;
+        if(r.voiceBuf)playVoiceBuf(r.voiceBuf);
+        else if(r.voice)r.tryPlay=90;
+      }
+    }
+    if(r.tryPlay>0){
+      r.tryPlay--;
+      if(r.voiceBuf){playVoiceBuf(r.voiceBuf);r.tryPlay=0;}
+    }
+  }
+  // ---- микрофон: сектор слышит ----
+  if(MIC.granted&&MIC.enabled){
+    const lv=MIC.level;
+    if(L.dark){
+      if(lv>.05){
+        G.micNoise=8;
+        if(!L.micNoted){L.micNoted=true;
+          msg('АКУСТИКА ПОМЕЩЕНИЯ ОБЪЕКТА ПРОНИКАЕТ В ЗАПИСЬ',150);}
+      }
+      if(G.lt%600===0&&Math.random()<.3&&lv<.03)
+        MIC.play(2.2,'hall',.12);
+    }
+    if(G.micNoise>0)G.micNoise--;
+  }
+  // ---- катушки ----
   for(const c of L.coils){ if(c.taken)continue;
     if(overlap({x:P.x,y:P.y,w:P_W,h:P_H},{x:c.x*TS+2,y:c.y*TS+2,w:12,h:12})){
       c.taken=true;L.coilsGot++;SFX.coil();burst(c.x*TS+8,c.y*TS+8,'#ffcf7a',14);
@@ -987,6 +1301,7 @@ function stepPlay(){
   if(L.exit&&!G.winT&&overlap({x:P.x,y:P.y,w:P_W,h:P_H},{x:L.exit.x*TS-4,y:L.exit.y*TS-8,w:24,h:24})){
     G.winT=1;
     if(G.rec.active)stopRec(true);
+    SFX.stopBuzz();
     burst(P.x+4,P.y+6,'#ffd27a',20);
   }
   // ---- warp-слой ----
@@ -1016,8 +1331,8 @@ function stepPlay(){
 function killPlayer(){const P=G.player;
   if(P.dead||G.winT)return;
   P.dead=true;P.deadT=0;G.deaths++;G.save.deaths++;G.glitch=50;G.shake=5;SFX.death();
+  SFX.stopBuzz();
   if(G.rec.active)stopRec(true);
-  // смерть стирает эхо: каналы освобождаются
   for(const e of G.echoes)if(!e.dieT){e.dieT=1;burst(e.x+4,e.y+6,'#7df3e8',14);}
   burst(P.x+4,P.y+6,'#e8e2d4',30); msg('СИГНАЛ ПОТЕРЯН · ЭХО СБРОШЕНЫ',80);
   const i=G.lvlIdx,mm=G.save.marks[i]||(G.save.marks[i]=[]);
@@ -1080,15 +1395,24 @@ function stepWatch(){
   const L=G.lvl,P=G.player;
   if(G.watch){
     const w=G.watch;w.t++;
+    if(SENS.shake>0){
+      G.watch=null;
+      SFX.echoDie();G.glitch=14;G.tcGlitch=30;
+      msg('ЗАПИСЬ СТЁРТА ТРЯСКОЙ',100);
+      return;
+    }
     const dx=Math.abs(P.x-w.px0),dy=Math.abs(P.y-w.py0);
     if(w.t>720||dx>TS*3.5||dy>TS*2){
       G.watch=null;
       SFX.slam();G.tcGlitch=36;G.glitch=Math.max(G.glitch,10);
+      if(MIC.granted&&MIC.enabled&&Math.random()<.4)
+        MIC.play(1.6,'whisper',.18);
     }
     return;
   }
   const anyKey=Keys.L||Keys.R||Keys.J||Keys.E||Keys.D;
   if(!anyKey&&!P.dead&&!G.rec.active)G.idleT++;else G.idleT=0;
+  if(G.idleT>0&&MIC.granted&&MIC.enabled&&MIC.level>.07)G.idleT++;
   if(G.idleT>1700&&!G.watchDone&&G.lvlIdx>=2&&!G.film){
     const dir=P.face<0?1:-1;
     const ty=Math.floor((P.y+P.h)/TS)-1;
@@ -1117,7 +1441,7 @@ function drawWatch(){
   drawDude(ctx,x,w.y,'idle',w.face,pal,al);
 }
 
-// ---------- клоны (РАЗМНОЖЕНИЕ) ----------
+// ---------- клоны ----------
 function stepClones(){
   const P=G.player;
   if(G.cloneQueue>0&&G.t%3===0){
@@ -1203,7 +1527,6 @@ function afterWipe(){
     const p=[];for(let k=0;k<src.length;k+=st)p.push(src[k]);
     G.save.paths[i]=p;
   }
-  // выпали в warp-сектор
   if(G.warpTo!=null){
     G.retIdx=(G.retIdx==null)?0:G.retIdx;
     G.lvlIdx=G.warpTo;
@@ -1212,7 +1535,6 @@ function afterWipe(){
     G.state='play';G.wipe=1;G.wipeDir=-1;
     return;
   }
-  // вернулись из warp-сектора — в исходный, с чистого листа
   if(i>=MAIN_COUNT){
     const back=(G.retIdx==null)?0:G.retIdx;
     G.retIdx=null;
@@ -1250,8 +1572,7 @@ let SC=1;
 function resize(){
   const w=innerWidth,h=innerHeight;
   let s=Math.min(w/VW,h/VH);
-  if(s>=2)s=Math.floor(s);   // целые масштабы на больших экранах;
-                             // на телефонах (<2x) — дробный, экран заполнен
+  if(s>=2)s=Math.floor(s);
   SC=s;
   const st=document.getElementById('stage');
   st.style.width=VW*s+'px'; st.style.height=VH*s+'px';
@@ -1305,7 +1626,6 @@ function buildCache(){
         g.fillStyle='#c8d0d4';g.fillRect(sx+1,py+9,1,4);}
     }
   }
-  // метки потерь: сектор помнит, где терялся сигнал
   if(L.marks&&L.marks.length){
     for(const mk of L.marks){
       const mx=mk[0]+4,my=mk[1]+P_H;
@@ -1377,11 +1697,12 @@ function renderWorld(){
   drawFan(120+((-camX*.4)%VW+VW)%VW,86);
   drawFan(380+((-camX*.4)%VW+VW)%VW,168);
   ctx.save();
-  if(G.mirror){ctx.translate(VW,0);ctx.scale(-1,1);}   // ЗЕРКАЛО
+  if(G.mirror){ctx.translate(VW,0);ctx.scale(-1,1);}
   ctx.translate(-Math.round(camX),-Math.round(camYv));
-  if(G.film)drawFilm();          // плёнка ЗА стенами — видна в проёмах
+  if(G.film)drawFilm();
   ctx.drawImage(lcv,0,0);
-  drawAcid(L);drawNoise(L);drawDoors(L);drawPlates(L);drawExit(L);drawPlatforms(L);drawCoils(L);
+  drawAcid(L);drawNoise(L);drawDoors(L);drawPlates(L);drawExit(L);
+  drawPlatforms(L);drawCoils(L);drawReceivers(L);
   for(const e of G.echoes)drawEcho(e);
   drawClones();
   drawWatch();
@@ -1471,12 +1792,13 @@ function drawDoors(L){
     }
     for(let i=0;i<3;i++){ctx.fillStyle=i%2?'#c9a13b':'#2c2c28';ctx.fillRect(px+3+i*4,floorY-3,4,3);}
     const on=d.open>.5;
-    const blink=d.ch===4&&L.ch4t>0&&(G.t>>3)%2;
-    ctx.fillStyle=blink?'#ffcf4a':(on?'#3f9e58':'#b03a2e');
+    const isBeacon=d.ch===5;
+    const blink=(isBeacon&&L.beaconLock)||(d.ch===4&&L.ch4t>0);
+    ctx.fillStyle=(blink&&(G.t>>3)%2)?'#ffcf4a':(on?'#3f9e58':'#b03a2e');
     ctx.fillRect(px+5,d.y0*TS-8,6,4);
     ctx.font='6px "IBM Plex Mono",monospace';
     ctx.fillStyle='rgba(220,215,200,.7)';
-    ctx.fillText('ШЛЮЗ-'+d.ch,px-2,d.y0*TS-11);
+    ctx.fillText(isBeacon?'ПЕЛЕНГ':'ШЛЮЗ-'+d.ch,px-2,d.y0*TS-11);
   }
 }
 function drawPlates(L){
@@ -1526,6 +1848,28 @@ function drawCoils(L){
     ctx.fillStyle='rgba(255,230,170,'+b+')'; ctx.fillRect(px-1,py-1,2,2);
   }
 }
+function drawReceivers(L){
+  for(const r of L.receivers){
+    const px=r.x*TS,py=r.y*TS;
+    ctx.fillStyle='#2b3238';ctx.fillRect(px+2,py+4,12,9);
+    ctx.fillStyle='#1d2327';ctx.fillRect(px+3,py+5,10,7);
+    ctx.fillStyle='#5c6a72';
+    for(let i=0;i<4;i++)ctx.fillRect(px+4,py+6+i*1.6,8,1);
+    ctx.strokeStyle='#6d747c';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(px+12,py+5);ctx.lineTo(px+16,py-6);ctx.stroke();
+    ctx.fillStyle=r.on?((G.t>>3)%2?'#ff5a45':'#7a2a20'):'#43241f';
+    ctx.fillRect(px+4,py+11,2,2);
+    if(r.on){
+      const ph=(G.t%36)/36;
+      ctx.strokeStyle='rgba(130,200,255,'+(0.35*(1-ph)).toFixed(2)+')';
+      ctx.beginPath();ctx.arc(px+8,py+8,4+ph*16,-.7,.7);ctx.stroke();
+      ctx.beginPath();ctx.arc(px+8,py+8,4+ph*16,2.4,3.9);ctx.stroke();
+    }
+    ctx.font='6px "IBM Plex Mono",monospace';
+    ctx.fillStyle=r.on?'rgba(140,210,255,.8)':'rgba(220,215,200,.5)';
+    ctx.fillText('ПРИЁМНИК 4625',px-6,py-9);
+  }
+}
 function drawEcho(e){
   let x=e.x,y=e.y;
   let al=.62;
@@ -1553,18 +1897,21 @@ function drawLight(camX,camYv){
     gr.addColorStop(0,'rgba(0,0,0,'+s+')');gr.addColorStop(1,'rgba(0,0,0,0)');
     g.fillStyle=gr;g.beginPath();g.arc(x,y,r,0,7);g.fill();};
   for(const lp of L.lamps){
-    const fl=.85+.15*Math.sin(G.t*.13+lp.seed*20)+(Math.random()<.01?-.4:0);
+    const micFl=(G.micNoise>0&&Math.random()<.5)?-.35:0;
+    const fl=.85+.15*Math.sin(G.t*.13+lp.seed*20)
+      +(Math.random()<.01?-.4:0)+micFl;
     cut(lp.x,lp.y+6,lp.red?42:70*fl,lp.red?.8:.95);}
   const P=G.player;
   if(P&&!P.dead)cut(P.x+4,P.y+6,L.dark?54:62,.95);
   for(const e of G.echoes)if(!e.dieT)cut(e.x+4,e.y+6,40,.9);
   if(G.watch&&G.watch.active)cut(G.watch.x+4,G.watch.y+6,46,.9);
   for(const c of L.coils)if(!c.taken)cut(c.x*TS+8,c.y*TS+8,24,.8);
+  for(const r of L.receivers)cut(r.x*TS+8,r.y*TS+6,22,.75);
   for(const pl of L.plates)cut(pl.x*TS+8,pl.y*TS+10,20,.7);
   for(const d of L.doors)cut(d.x*TS+8,d.y0*TS-6,18,.7);
   if(L.exit)cut(L.exit.x*TS+8,L.exit.y*TS,32,.85);
   ctx.save();
-  if(G.mirror){ctx.translate(VW,0);ctx.scale(-1,1);}   // свет отражается вместе с миром
+  if(G.mirror){ctx.translate(VW,0);ctx.scale(-1,1);}
   ctx.drawImage(lightCv,0,0);
   ctx.globalCompositeOperation='lighter';
   const glow=function(wx,wy,r,c){
@@ -1581,13 +1928,14 @@ function drawLight(camX,camYv){
     ctx.fillStyle='#2c3136';
     ctx.fillRect(lp.x-camX-4,lp.y-camYv-2,8,3);}
   for(const c of L.coils)if(!c.taken)glow(c.x*TS+8,c.y*TS+8,14,'rgba(255,200,90,.22)');
+  for(const r of L.receivers)glow(r.x*TS+8,r.y*TS+6,14,'rgba(120,190,255,.18)');
   for(const e of G.echoes)if(!e.dieT)glow(e.x+4,e.y+6,16,'rgba(110,240,230,.15)');
   if(L.exit)glow(L.exit.x*TS+8,L.exit.y*TS,18,'rgba(120,240,140,.2)');
   ctx.restore();
   ctx.globalCompositeOperation='source-over';
 }
 function renderDust(camX,camYv){
-  if(G.mirror)return;   // в отражении нет пыли
+  if(G.mirror)return;
   ctx.fillStyle='rgba(210,215,205,.22)';
   for(const p of G.parts)if(p.c==='dust')ctx.fillRect(p.x-camX,p.y-camYv,1,1);
 }
@@ -1613,6 +1961,7 @@ function renderUI(){
   if(G.state==='title')renderTitle();
   else if(G.state==='brief')renderBrief();
   else if(G.state==='final')renderFinal();
+  else if(G.state==='sensor')renderSensor();
   else if(G.state==='play'||G.state==='wipe')renderHUD();
   if(G.wipe>0)drawWipe();
 }
@@ -1645,7 +1994,62 @@ function renderHUD(){
     uctx.fillStyle='rgba(200,205,200,.45)';uctx.fillText('▶ PLAY',W-96,22);
     uctx.fillStyle=DIM;uctx.fillText(tcText,W-14,22);
   }
+  uctx.font='8px "IBM Plex Mono",monospace';
+  uctx.fillStyle=(MIC.granted&&MIC.enabled)?'rgba(125,243,232,.7)':'rgba(200,205,200,.25)';
+  uctx.fillText('МИК',W-96,34);
   uctx.textAlign='left';
+  // ---- компас пеленга ----
+  if(L.beacon){
+    const bw=200,bx=W/2-bw/2,by=H-76;
+    uctx.font='9px "IBM Plex Mono",monospace';
+    uctx.textAlign='center';
+    uctx.fillStyle=L.beaconLock?'#5fe07a':DIM;
+    const prog=(L.beaconHold/60).toFixed(1);
+    uctx.fillText('ПЕЛЕНГ '+Math.round(L.beacon.target)+'° · Δ '+Math.round(L.beaconDiff)+'°'
+      +(L.beaconLock?' · ЗАХВАТ':' · УДЕРЖАНИЕ '+prog+'С'),W/2,by-4);
+    uctx.fillStyle='rgba(10,14,18,.7)';
+    uctx.fillRect(bx,by,bw,12);
+    uctx.strokeStyle='rgba(255,180,110,.4)';
+    uctx.strokeRect(bx+.5,by+.5,bw,12);
+    for(let a=0;a<=360;a+=45){
+      const x=bx+a/360*bw;
+      uctx.strokeStyle='rgba(255,180,110,.25)';
+      uctx.beginPath();uctx.moveTo(x,by);uctx.lineTo(x,by+4);uctx.stroke();
+    }
+    const tw=30/360*bw;
+    const tx0=bx+L.beacon.target/360*bw-tw/2;
+    uctx.fillStyle=L.beaconLock?'rgba(95,224,122,.3)':'rgba(255,180,110,.3)';
+    uctx.fillRect(tx0,by+2,tw,8);
+    uctx.fillStyle=L.beaconLock?'#5fe07a':AMBER;
+    uctx.fillRect(bx+L.beacon.target/360*bw-1,by,2,12);
+    uctx.fillStyle=CYAN;
+    uctx.fillRect(bx+G.course/360*bw-1,by-2,3,16);
+    uctx.textAlign='left';
+    if(!SENS.hasOrient&&!isTouch){
+      uctx.font='8px "IBM Plex Mono",monospace';
+      uctx.fillStyle='rgba(200,205,200,.4)';
+      uctx.textAlign='center';
+      uctx.fillText('Z/X — ПОВОРОТ ПЕЛЕНГА',W/2,by+24);
+      uctx.textAlign='left';
+    }
+  }
+  // ---- печать шифровки УВБ ----
+  let uvbR=null;
+  for(const r of L.receivers)if(r.on&&r.text){uvbR=r;break;}
+  if(uvbR){
+    uctx.font='10px "IBM Plex Mono",monospace';
+    uctx.textAlign='center';
+    uctx.fillStyle='rgba(140,210,255,.9)';
+    uctx.fillText(uvbR.text.slice(0,uvbR.shown),W/2,44);
+    if(uvbR.shown>=uvbR.text.length&&uvbR.lore){
+      uctx.font='8px "IBM Plex Mono",monospace';
+      uctx.fillStyle='rgba(200,205,200,.55)';
+      uctx.fillText('КОД '+uvbR.tag+' — '+uvbR.lore,W/2,58);
+    }
+    uctx.textAlign='left';
+  }
+  // ---- каналы эхо ----
+  uctx.font='11px "Pixelify Sans",monospace';
   uctx.fillStyle=DIM;uctx.fillText('ЭХО',14,H-28);
   for(let i=0;i<L.echoLimit;i++){
     const used=i<G.echoes.length;
@@ -1680,15 +2084,38 @@ function renderHUD(){
     uctx.fillStyle='rgba(2,4,6,.78)'; uctx.fillRect(0,0,W,H);
     uctx.textAlign='center';
     uctx.font='15px "Pixelify Sans",monospace';uctx.fillStyle=AMBER;
-    uctx.fillText('НАБЛЮДЕНИЕ ПРИОСТАНОВЛЕНО',W/2,H/2-56);
+    uctx.fillText('НАБЛЮДЕНИЕ ПРИОСТАНОВЛЕНО',W/2,H/2-64);
     uctx.font='10px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(220,215,205,.8)';
     const lines=['E — запись эхо · Q — стереть эхо · R — перезапуск сектора',
       'катушка = +5 сек плёнки · эхо живёт ровно по записи',
-      'смерть стирает эхо · M — звук: '+(SFX.on?'ВКЛ':'ВЫКЛ')+' · ESC — продолжить',
+      'K — микрофон: '+(MIC.granted?(MIC.enabled?'СЛУШАЕТ':'ВЫКЛ'):'НЕТ')+' · на тёмных этажах сидите тише',
+      'M — звук · ESC — продолжить',
       '','СМЕРТЕЙ ЗА СЕССИЮ: '+G.deaths];
-    for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],W/2,H/2-24+i*18);
+    for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],W/2,H/2-30+i*17);
     uctx.textAlign='left';
   }
+}
+function renderSensor(){
+  const W=VW,H=VH;
+  uctx.fillStyle='rgba(2,4,6,.94)';uctx.fillRect(0,0,W,H);
+  uctx.textAlign='center';
+  uctx.font='16px "Pixelify Sans",monospace';uctx.fillStyle=AMBER;
+  uctx.fillText('СЕКТОР Б-5-А · КАЛИБРОВКА АНТЕННЫ',W/2,H/2-60);
+  uctx.font='10px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(220,215,205,.75)';
+  const lines=['Для открытия пеленгового шлюза устройство',
+    'необходимо физически повернуть по азимуту.',
+    '',
+    'ТЕЛЕФОН: разрешите датчики ориентации',
+    'ДЕСКТОП: поворот пеленга — клавиши Z / X'];
+  for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],W/2,H/2-30+i*16);
+  if(G.sensorBusy){
+    uctx.fillStyle='rgba(125,243,232,.85)';
+    uctx.fillText('ОЖИДАНИЕ РАЗРЕШЕНИЯ...',W/2,H/2+84);
+  } else if((G.t>>4)%2){
+    uctx.font='11px "Pixelify Sans",monospace';uctx.fillStyle='#e8e2d4';
+    uctx.fillText('[ ENTER ] КАЛИБРОВАТЬ',W/2,H/2+84);
+  }
+  uctx.textAlign='left';
 }
 function renderTitle(){
   const W=VW,H=VH;
@@ -1737,7 +2164,7 @@ function renderTitle(){
       :'[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
   }
   uctx.font='8px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.4)';
-  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись эхо · Q — стереть · R — рестарт · M — звук · сборка 12',W/2,H-6);
+  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись · Q — стереть · Z/X — пеленг · K — микрофон · сборка 14',W/2,H-6);
   uctx.textAlign='left';
 }
 function renderBrief(){
