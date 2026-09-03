@@ -140,6 +140,9 @@
       <label>ДАТА ПРОТОКОЛА</label><input type="text" id="ep-date">
       <label>КАНАЛОВ ЭХО (0 = свинец)</label><input type="number" id="ep-echo" min="0" max="3">
       <div class="chk"><input type="checkbox" id="ep-dark"><span>ТЁМНЫЙ СЕКТОР (лампы почти выключены)</span></div>
+      <div class="chk"><input type="checkbox" id="ep-lab"><span>СТИЛЬ: АРХИВ ЭВМ (кафель, шкафы, столы)</span></div>
+      <label>ФАНТОМЫ (0-3 · красные записи: 1-е касание — отброс, 2-е — конец)</label>
+      <input type="number" id="ep-phantoms" min="0" max="3">
       <label>ПОДСКАЗКА (внизу экрана)</label><input type="text" id="ep-hint">
       <label>ЗАПИСЬ ПРОТОКОЛА (экран между уровнями)</label><textarea id="ep-note"></textarea>
       <label>РАЗМЕР КАРТЫ (W × H)</label>
@@ -163,11 +166,11 @@
 </div>
 <script>
 "use strict";
-console.log('ЭХО · сборка 16-E (звук-фиксы · приёмники везде) — если видите это, файл обновлён');
+console.log('ЭХО · сборка 17-E (блок Г · красные фантомы) — если видите это, файл обновлён');
 /* ============================================================
    ЭХО — эксперимент №9 · НИИ «ПУЛЬСАР» · хронокамера К-7
-   Сборка 16-E: 15-E + починка звука (suspend/resume, M глушит
-   всё, гудел глобален) + приёмник УВБ в каждом секторе
+   Сборка 17-E: 16-E + блок Г (10 секторов, архив ЭВМ) +
+   красные фантомы-эхо + тайлы M (шкаф) / T (стол) + lab-стиль
    ============================================================ */
 
 // ---------- константы ----------
@@ -176,6 +179,7 @@ const GRAV=.34, JUMPV=-5.9, MAXVX=1.75, ACC=.28, FRIC=.3, MAXFALL=6.5;
 const P_W=8, P_H=13;
 const PULSE_T=168;
 const REC_BASE=150, REC_COIL=150;
+const PH_HIT_WINDOW=100;   // окно опасности после первого касания фантома
 
 // ---------- утилиты ----------
 const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t;
@@ -185,9 +189,6 @@ function setChar(s,i,c){return s.slice(0,i)+c+s.slice(i+1);}
 
 // ---------- аудио (процедурный синтез) ----------
 const SFX={ctx:null,master:null,on:true,humG:null,buzz:null,
-  // ФИКС 1: если контекст уже есть, но «уснул» (вкладка в фоне,
-  // звонок) — будим его. Раньше init() просто возвращался, и звук
-  // пропадал до перезагрузки страницы.
   init(){ if(this.ctx){
       if(this.ctx.state==='suspended'){try{this.ctx.resume();}catch(e){}}
       return; }
@@ -241,9 +242,9 @@ const SFX={ctx:null,master:null,on:true,humG:null,buzz:null,
   cough(){this.n(.09,700,1.4,.05);this.n(.12,500,1.2,.06,.14);this.n(.08,800,1.5,.04,.32)},
   tapeStop(){this.t(1600,220,.22,'sine',.06);this.n(.12,3000,4,.04)},
   tick(){this.n(.03,2600,6,.05)},
-  // ФИКС 2: гудел больше не зависит от this.on при старте —
-  // громкостью управляет gain (см. setBuzzMute), поэтому M
-  // включает/выключает его без пересоздания
+  // красные фантомы
+  phantom(){this.t(1300,180,.16,'sawtooth',.10);this.n(.14,2400,3,.05)},
+  phantomHit(){this.t(160,40,.34,'square',.16);this.n(.3,900,.8,.18);this.t(900,200,.1,'sawtooth',.08)},
   startBuzz(){ if(!this.ctx||this.buzz)return;
     const C=this.ctx;
     const o=C.createOscillator();o.type='sawtooth';o.frequency.value=96;
@@ -277,7 +278,7 @@ const SFX={ctx:null,master:null,on:true,humG:null,buzz:null,
   const FORMATS=['mp3','ogg','wav','m4a'];
   const NAMES=['jump','land','step','plate','door','door_open','door_close',
     'rec_on','rec_beep','echo','echo_die','coil','pulse','death','win',
-    'deny','slam','cough','tape_stop'];
+    'deny','slam','cough','tape_stop','phantom','phantom_hit'];
   const AMB_NAMES=['ambient','background','fon'];
   const EXT_VOL=0.9, AMB_VOL=0.35;
   const ext=SFX.ext={};
@@ -416,7 +417,7 @@ const MIC={asked:false,granted:false,enabled:true,level:0,
 };
 
 // ============================================================
-//   ДАТЧИКИ · ориентация + тряска (Б-5-А ПЕЛЕНГ)
+//   ДАТЧИКИ · ориентация + тряска
 // ============================================================
 const SENS={ok:false,hasOrient:false,alpha:0,shake:0,
   init(){
@@ -491,7 +492,6 @@ function fetchVoice(name,rec){
     return new Promise(function(res,rej){SFX.ctx.decodeAudioData(ab,res,rej);});
   }).then(function(buf){rec.voiceBuf=buf;}).catch(function(){});
 }
-// ФИКС: голосовые файлы тоже подчиняются M
 function playVoiceBuf(buf){
   if(!SFX.ctx||!SFX.on||!buf)return;
   const s=SFX.ctx.createBufferSource();s.buffer=buf;
@@ -506,7 +506,7 @@ const MAP={ArrowLeft:'L',KeyA:'L',ArrowRight:'R',KeyD:'R',ArrowUp:'J',KeyW:'J',S
   Escape:'ESC',Enter:'OK',ArrowDown:'D'};
 let firstAct=false;
 function firstAction(){
-  SFX.init();                    // всегда: создаст ИЛИ разбудит контекст
+  SFX.init();
   if(firstAct)return; firstAct=true;
   MIC.init();
   loadUVB();
@@ -517,7 +517,6 @@ addEventListener('keyup',function(e){const k=MAP[e.code];if(k)Keys[k]=0;});
 addEventListener('blur',function(){
   for(const k in Keys)Keys[k]=0;
   if(typeof G!=='undefined'&&G&&G.state==='play')G.paused=true;});
-// ФИКС 1: возврат на вкладку будит звук
 document.addEventListener('visibilitychange',function(){
   if(!document.hidden)SFX.init();
 });
@@ -604,7 +603,7 @@ if(isTouch){
   });
 })();
 
-// ---------- спрайт подопытного ----------
+// ---------- спрайты ----------
 const DUDE={
   idle:["..HHHH..",".HHHHHH.",".HSSSSH.",".HSSSSH.","..SSSS..",".RRRRRR.","RRRRRRRR","RRRRRRRR","RRRRRRRR","SRRRRRRS",".RRRRRR.","..P..P..","..B..B.."],
   runA:["..HHHH..",".HHHHHH.",".HSSSSH.",".HSSSSH.","..SSSS..",".RRRRRR.","RRRRRRRR","RRRRRRRR","RRRRRRRR","SRRRRRRS",".RRRRRR.",".P....P.",".B....B."],
@@ -613,6 +612,7 @@ const DUDE={
 };
 const PAL_P={H:'#3a3f3a',S:'#d8a37a',R:'#c7cfc2',P:'#4a4f57',B:'#23262b'};
 const PAL_E={H:'#0d3d43',S:'#a5f5ec',R:'#3d97a4',P:'#285961',B:'#153a40'};
+const PAL_R={H:'#4a0f0c',S:'#ff6a55',R:'#b02014',P:'#7a1410',B:'#3a0c08'};   // красный фантом
 function drawDude(g,x,y,fr,face,pal,alpha){
   g.save();g.globalAlpha=alpha;
   const sp=DUDE[fr]||DUDE.idle;
@@ -625,7 +625,7 @@ function drawDude(g,x,y,fr,face,pal,alpha){
 }
 
 // ============================================================
-//     ПОСТРОИТЕЛЬ КАРТ (R = приёмник УВБ, теперь в каждом)
+//     ПОСТРОИТЕЛЬ КАРТ
 // ============================================================
 function mkGrid(H,W){const m=[];for(let y=0;y<H;y++)m.push(new Array(W).fill('.'));return m;}
 function box(m,x0,y0,x1,y1,c){
@@ -842,6 +842,145 @@ function mapW4(){const W=96,H=10,m=mkGrid(H,W);border(m);
   m[7][40]='R';
   return join(m);}
 
+// ---------- блок Г · архив ЭВМ (стиль lab) ----------
+function mapG1(){const W=64,H=14,m=mkGrid(H,W);border(m);
+  box(m,1,12,62,12,'#');
+  box(m,16,11,18,11,'M');
+  box(m,44,10,47,11,'M');
+  m[11][28]='T';m[11][29]='T';m[11][30]='T';
+  m[12][10]='1';
+  box(m,34,8,34,12,'A');
+  m[11][54]='R';
+  m[12][52]='F';
+  m[11][8]='o';m[11][24]='o';m[9][46]='o';
+  m[12][3]='P';
+  return join(m);}
+
+function mapG2(){const W=72,H=14,m=mkGrid(H,W);border(m);
+  box(m,1,12,70,12,'#');
+  box(m,24,10,26,11,'M');
+  box(m,44,9,45,11,'M');
+  box(m,48,9,49,11,'M');
+  m[11][34]='T';m[11][35]='T';
+  m[12][10]='1';m[12][36]='2';
+  box(m,16,8,16,12,'A');
+  box(m,58,8,58,12,'B');
+  m[12][66]='F';m[11][62]='R';
+  m[11][8]='o';m[11][30]='o';m[8][44]='o';
+  m[12][3]='P';
+  return join(m);}
+
+function mapG3(){const W=60,H=14,m=mkGrid(H,W);border(m);
+  box(m,1,12,58,12,'#');
+  box(m,26,10,28,11,'M');
+  m[11][40]='T';
+  m[12][10]='1';
+  box(m,34,8,34,12,'A');
+  m[12][50]='F';m[11][52]='R';
+  m[11][8]='o';m[11][22]='o';m[11][44]='o';
+  m[12][3]='P';
+  return join(m);}
+
+function mapG4(){const W=68,H=14,m=mkGrid(H,W);border(m);
+  box(m,1,12,66,12,'#');
+  box(m,22,10,24,11,'M');
+  box(m,50,10,53,11,'M');
+  m[11][14]='T';m[11][15]='T';
+  m[11][30]='T';m[11][31]='T';m[11][32]='T';
+  m[11][40]='T';m[11][41]='T';
+  m[12][8]='4';
+  box(m,28,8,28,12,'D');
+  m[12][44]='4';
+  box(m,60,8,60,12,'D');
+  m[12][64]='F';m[11][56]='R';
+  m[11][10]='o';m[11][46]='o';
+  m[12][3]='P';
+  return join(m);}
+
+function mapG5(){const W=80,H=14,m=mkGrid(H,W);border(m);
+  box(m,1,12,78,12,'#');
+  m[12][8]='4';
+  box(m,26,8,26,12,'D');
+  m[12][34]='^';m[12][35]='^';
+  box(m,44,12,46,12,'~');
+  m[12][56]='^';m[12][57]='^';
+  m[11][20]='T';m[11][21]='T';
+  m[11][50]='T';m[11][51]='T';m[11][52]='T';
+  box(m,62,10,64,11,'M');
+  m[12][74]='F';m[11][70]='R';
+  m[11][10]='o';m[11][40]='o';m[11][60]='o';
+  m[12][3]='P';
+  return join(m);}
+
+function mapG6(){const W=76,H=14,m=mkGrid(H,W);border(m);
+  box(m,1,12,74,12,'#');
+  box(m,22,10,23,11,'M');
+  box(m,48,10,49,11,'M');
+  m[11][16]='T';m[11][17]='T';
+  m[11][42]='T';m[11][43]='T';
+  m[12][8]='1';m[12][30]='2';m[12][54]='3';
+  box(m,16,8,16,12,'A');box(m,42,8,42,12,'B');box(m,66,8,66,12,'C');
+  m[12][72]='F';m[11][70]='R';
+  m[11][12]='o';m[11][36]='o';m[11][60]='o';
+  m[12][3]='P';
+  return join(m);}
+
+function mapG7(){const W=72,H=14,m=mkGrid(H,W);border(m);
+  box(m,1,12,70,12,'#');
+  m[12][10]='1';
+  box(m,24,8,24,12,'A');
+  box(m,30,8,46,12,'@');
+  m[12][36]='^';m[12][37]='^';m[11][38]='o';
+  m[12][52]='2';
+  box(m,60,8,60,12,'B');
+  m[12][68]='F';m[11][64]='R';
+  m[11][8]='o';m[11][50]='o';
+  m[12][3]='P';
+  return join(m);}
+
+function mapG8(){const W=40,H=24,m=mkGrid(H,W);border(m);
+  box(m,1,22,38,22,'#');
+  box(m,12,4,12,17,'#');
+  box(m,12,18,12,21,'A');
+  box(m,22,14,27,14,'#');
+  m[13][24]='1';m[13][26]='o';
+  m[21][27]='P';
+  m[21][2]='F';m[21][8]='o';m[21][15]='R';
+  m[17][18]='o';
+  m[17][20]='*';
+  box(m,30,21,33,21,'M');
+  return join(m);}
+
+function mapG9(){const W=70,H=14,m=mkGrid(H,W);border(m);
+  box(m,1,12,68,12,'#');
+  m[12][10]='1';
+  box(m,22,8,22,12,'A');
+  box(m,30,12,32,12,'~');
+  m[12][40]='4';
+  box(m,54,8,54,12,'D');
+  box(m,44,10,45,11,'M');
+  m[12][64]='F';m[11][60]='R';
+  m[11][8]='o';m[11][36]='o';m[11][50]='o';
+  m[12][3]='P';
+  return join(m);}
+
+function mapG10(){const W=100,H=15,m=mkGrid(H,W);border(m);
+  box(m,1,13,98,13,'#');
+  m[13][8]='1';
+  box(m,18,9,18,13,'A');
+  box(m,24,9,42,13,'@');
+  m[13][32]='^';m[13][33]='^';m[11][36]='o';
+  m[13][46]='2';
+  box(m,52,9,52,13,'B');
+  m[13][58]='4';
+  box(m,72,9,72,13,'D');
+  box(m,80,13,82,13,'~');
+  m[13][94]='F';m[12][88]='R';
+  m[11][12]='o';m[11][62]='o';m[11][76]='o';
+  box(m,86,10,89,11,'M');
+  m[13][3]='P';
+  return join(m);}
+
 // ---------- данные уровней ----------
 const LEVELS=[
 {name:'КАЛИБРОВКА',sub:'СЕКТОР Б-1',date:'04.11.1986',echo:1,dark:false,map:mapL1(),
@@ -904,14 +1043,55 @@ const LEVELS=[
  hint:'СКВОЗЬ СТАТИКУ ЭХО НЕ ПРОЙДЁТ · ЗАПИСЫВАЙ ДО И ПОСЛЕ',
  note:'Запись от 30.01 отсутствует. На ленте — статика, шаги и чей-то кашель. Кашель не наш.',
  signs:[{x:2,y:10,t:'ТИХО'},{x:27,y:11,t:'СТАТИКА'},{x:44,y:10,t:'ЭХО-2'}]},
-{name:'ПОСЛЕДНЯЯ ПЛЁНКА',sub:'СЕКТОР В-5',date:'07.02.1987',echo:3,dark:false,map:mapV5(),finale:'НАБЛЮДАТЕЛЬ ТОЖЕ БЫЛ ЗАПИСЬЮ.',
- hint:'КАНАЛОВ: 3 · ВСЁ, ЧТО ВЫ УМЕЕТЕ',
- note:'Лента №9-К. Дальше записей нет. Есть одиннадцать минут шагов и звук закрывающейся двери.',
- signs:[{x:2,y:20,t:'ПОСЛЕДНЯЯ ПЛЁНКА'},{x:31,y:19,t:'СТАТИКА'},{x:53,y:20,t:'ДЕРЖИТ ЭХО-1'},{x:66,y:20,t:'ИМПУЛЬС'}]}
+{name:'ПОСЛЕДНЯЯ ПЛЁНКА',sub:'СЕКТОР В-5',date:'07.02.1987',echo:3,dark:false,map:mapV5(),
+ hint:'КАНАЛОВ: 3 · ВСЁ, ЧТО ВЫ УМЕЕТЕ · ДАЛЬШЕ — БЛОК Г',
+ note:'Лента №9-К признана не последней. Под архивом обнаружен машинный зал. Красные записи не числятся в каталоге.',
+ signs:[{x:2,y:20,t:'НЕ ПОСЛЕДНЯЯ'},{x:31,y:19,t:'СТАТИКА'},{x:53,y:20,t:'ДЕРЖИТ ЭХО-1'},{x:66,y:20,t:'ИМПУЛЬС'}]},
+// ---------- БЛОК Г · АРХИВ ЭВМ ----------
+{name:'АРХИВ',sub:'СЕКТОР Г-1',date:'15.02.1987',echo:1,dark:false,lab:true,phantoms:1,map:mapG1(),
+ hint:'КРАСНЫЕ ЗАПИСИ: ПРОЯВЛЯЮТСЯ · ИДУТ СКВОЗЬ СТЕНЫ · ПЕРВОЕ КАСАНИЕ ОТБРОСИТ · ВТОРОЕ — КОНЕЦ',
+ note:'Институт законсервирован. Объект спускается в архив плёнок. Красные записи не числятся в каталоге. Комиссия рекомендует не касаться.',
+ signs:[{x:2,y:6,t:'КРАСНЫЕ НЕ В КАТАЛОГЕ'},{x:28,y:8,t:'АРХИВ ПЛЁНОК'},{x:50,y:9,t:'НЕ КАСАТЬСЯ'}]},
+{name:'ПЕРФОКАРТЫ',sub:'СЕКТОР Г-2',date:'21.02.1987',echo:2,dark:false,lab:true,phantoms:1,map:mapG2(),
+ hint:'СТОЛЫ И ШКАФЫ НЕ СПАСАЮТ — ОНИ ИДУТ СКВОЗЬ · ЗАПИСЫВАЙ, УКЛОНЯЯСЬ',
+ note:'Стойки ЭВМ ещё тёплые. Перфолента уходит под пол и возвращается из потолка. Техник, который её заправлял, уволен. В 1984-м.',
+ signs:[{x:2,y:6,t:'ПЕРФОЛЕНТА'},{x:34,y:8,t:'ЭХО + УКЛОНЕНИЕ'},{x:60,y:9,t:'СКВОЗЬ СТЕНЫ'}]},
+{name:'ХОЛОДНЫЙ СТАРТ',sub:'СЕКТОР Г-3',date:'28.02.1987',echo:1,dark:true,lab:true,phantoms:2,map:mapG3(),
+ hint:'ТЬМА · ЛАМПОЧКИ ШКАФОВ — ОРИЕНТИР · КАТУШКИ СВЕТЯТСЯ',
+ note:'Обогрев машинного зала отключён. Красные записи проявляются ярче на холоде. Считать особенностью среды.',
+ signs:[{x:2,y:8,t:'ХОЛОДНЫЙ СТАРТ'},{x:20,y:8,t:'ЯРЧЕ НА ХОЛОДЕ'},{x:44,y:8,t:'ТИХО'}]},
+{name:'ЯЧЕЙКА №9',sub:'СЕКТОР Г-4',date:'07.03.1987',echo:2,dark:false,lab:true,phantoms:2,map:mapG4(),
+ hint:'ДВА ИМПУЛЬСА · ЭХО-ПУТИ ЖМУТ ПЛИТЫ · САМ УКЛОНЯЙСЯ',
+ note:'В ячейке №9 хранится запись самой ячейки №9. Отделить невозможно. Ячейка не возражает.',
+ signs:[{x:2,y:6,t:'ЯЧЕЙКА №9'},{x:30,y:8,t:'ИМПУЛЬС ×2'},{x:56,y:9,t:'УКЛОНЕНИЕ'}]},
+{name:'ОХОТА',sub:'СЕКТОР Г-5',date:'14.03.1987',echo:1,dark:false,lab:true,phantoms:3,map:mapG5(),
+ hint:'ИХ БУДЕТ БОЛЬШЕ · СПАСАЕТ ТОЛЬКО ДВИЖЕНИЕ · ШЛЮЗ ДЕРЖИТ ЭХО',
+ note:'Красные записи проявляют интерес к объекту. Взаимный. Первое касание терпимо. Второе — финал плёнки.',
+ signs:[{x:2,y:6,t:'ОХОТА'},{x:36,y:8,t:'КИСЛОТА'},{x:64,y:9,t:'ТЕРПИМО'}]},
+{name:'КАТАЛОГ',sub:'СЕКТОР Г-6',date:'21.03.1987',echo:3,dark:false,lab:true,phantoms:2,map:mapG6(),
+ hint:'ТРИ КАНАЛА · ТРИ ПЛИТЫ · КРАСНЫЕ ЧИТАЮТ КАТАЛОГ БЫСТРЕЕ · НЕ ДОГОНЯЙ — ОБГОНИ',
+ note:'Три канала, три шлюза. Красные записи читают каталог быстрее объекта. Не догнать. Не обязательно.',
+ signs:[{x:2,y:6,t:'КАТАЛОГ Н-1'},{x:30,y:8,t:'ТРИ ЭХО'},{x:64,y:9,t:'НЕ ДОГОНЯТЬ'}]},
+{name:'СТЕРИЛЬНАЯ',sub:'СЕКТОР Г-7',date:'28.03.1987',echo:2,dark:false,lab:true,phantoms:2,map:mapG7(),
+ hint:'В СТАТИКЕ КРАСНЫЕ НЕ ПРОЯВЛЯЮТСЯ · ЭХО ЗАПИСЫВАЙ ДО И ПОСЛЕ',
+ note:'В статике красные записи не проявляются. Возможно, стерильность — это отсутствие зрителей.',
+ signs:[{x:2,y:6,t:'СТЕРИЛЬНАЯ'},{x:32,y:7,t:'ЗДЕСЬ ИХ НЕТ'},{x:56,y:9,t:'ПОЧТИ'}]},
+{name:'МАШИННЫЙ ЗАЛ',sub:'СЕКТОР Г-8',date:'04.04.1987',echo:1,dark:false,lab:true,phantoms:3,map:mapG8(),
+ hint:'ЛИФТ + ФАНТОМЫ · ЭХО НА ВЕРХНЕМ ЯРУСЕ ДЕРЖИТ ШЛЮЗ ВНИЗУ',
+ note:'Лифт ходит между залами сам. Красные записи пользуются им же. Вежливо. По очереди.',
+ signs:[{x:2,y:17,t:'МАШИННЫЙ ЗАЛ'},{x:15,y:8,t:'ШАХТА'},{x:23,y:9,t:'ПЛИТА → ШЛЮЗ'},{x:4,y:17,t:'ВЫХОД'}]},
+{name:'КРАСНАЯ ЛЕНТА',sub:'СЕКТОР Г-9',date:'11.04.1987',echo:2,dark:true,lab:true,phantoms:3,map:mapG9(),
+ hint:'ТЬМА · КРАСНАЯ ЛЕНТА · КАТУШКИ ВЕДУТ · ВТОРОЕ КАСАНИЕ НЕ ПРОЩАЕТ',
+ note:'Катушки в этом секторе намотаны красной лентой. Плёнка боится собственной записи.',
+ signs:[{x:2,y:8,t:'КРАСНАЯ ЛЕНТА'},{x:26,y:8,t:'НЕ ДЫШАТЬ'},{x:48,y:8,t:'ВЫХОД'}]},
+{name:'ПУЛЬСАР-7',sub:'СЕКТОР Г-10',date:'18.04.1987',echo:3,dark:false,lab:true,phantoms:3,map:mapG10(),finale:'ПЕТЛЯ ЗАМКНУЛАСЬ ВНУТРИ ПЕТЛИ.',
+ hint:'ВСЁ · КАК В ПОСЛЕДНИЙ РАЗ',
+ note:'Хронокамера К-7 пишет сама себя. Дальше записей нет. Есть красная лента и одиннадцать минут тишины.',
+ signs:[{x:2,y:7,t:'ПУЛЬСАР-7'},{x:30,y:6,t:'СТАТИКА'},{x:60,y:7,t:'КАНАЛЫ: 3'},{x:88,y:7,t:'ПОСЛЕДНЯЯ ЯЧЕЙКА'}]}
 ];
 
 // ---------- warp-секторы ----------
-const MAIN_COUNT=LEVELS.length;   // 16 основных
+const MAIN_COUNT=LEVELS.length;   // 26 основных
 LEVELS.push(
 {name:'РАЗМНОЖЕНИЕ',sub:'СЕКТОР Н/Д',date:'--.--.----',echo:0,dark:false,map:mapW1(),clones:14,
  hint:'МАТЕРИАЛ НЕ КЛАССИФИЦИРОВАН',
@@ -931,13 +1111,13 @@ LEVELS.push(
  signs:[{x:2,y:6,t:'КОРИДОР'},{x:14,y:6,t:'КОРИДОР'},{x:26,y:6,t:'КОРИДОР'},{x:38,y:6,t:'КОРИДОР'}]}
 );
 
-// тайные проходы
-LEVELS[0].warps=[{x:51,y:10,type:'wall',to:17}];   // Б-1 → ЗЕРКАЛО
-LEVELS[3].warps=[{x:20,y:29,type:'acid',to:18}];   // Б-4 → ПОТОЛОК
-LEVELS[6].warps=[{x:71,y:12,type:'wall',to:16}];   // Б-6 → РАЗМНОЖЕНИЕ
-LEVELS[9].warps=[{x:63,y:12,type:'wall',to:19}];   // Б-9 → КОРИДОР
-LEVELS[12].warps=[{x:26,y:22,type:'acid',to:16}];  // В-2 → РАЗМНОЖЕНИЕ
-LEVELS[14].warps=[{x:52,y:14,type:'acid',to:19}];  // В-4 → КОРИДОР
+// тайные проходы (индексы варпов: 26-29)
+LEVELS[0].warps=[{x:51,y:10,type:'wall',to:27}];   // Б-1 → ЗЕРКАЛО
+LEVELS[3].warps=[{x:20,y:29,type:'acid',to:28}];   // Б-4 → ПОТОЛОК
+LEVELS[6].warps=[{x:71,y:12,type:'wall',to:26}];   // Б-6 → РАЗМНОЖЕНИЕ
+LEVELS[9].warps=[{x:63,y:12,type:'wall',to:29}];   // Б-9 → КОРИДОР
+LEVELS[12].warps=[{x:26,y:22,type:'acid',to:26}];  // В-2 → РАЗМНОЖЕНИЕ
+LEVELS[14].warps=[{x:52,y:14,type:'acid',to:29}];  // В-4 → КОРИДОР
 
 const TOTAL_COILS=LEVELS.slice(0,MAIN_COUNT).reduce(function(a,l){return a+l.map.join('').split('o').length-1;},0);
 
@@ -949,6 +1129,7 @@ const G={state:'title',lvlIdx:0,sel:0,t:0,lt:0,deaths:0,paused:false,
   palPlayer:null,palEcho:null,
   warpTo:null,retIdx:null,mirror:false,flipG:false,endless:false,wraps:0,clones:[],cloneQueue:0,
   uvb:null,course:0,micNoise:0,sensorBusy:false,
+  phantoms:[],
   custom:null};
 (function(){
   let s=null;
@@ -979,8 +1160,10 @@ function loadLevel(i){
   const H=rows.length,W=rows[0].length;
   const grid=rows.map(function(r){return r.padEnd(W,'#');});
   const L={def:def,W:W,H:H,grid:grid,doors:[],plates:[],coils:[],spikes:[],acid:[],noise:[],
-    receivers:[],platforms:[],lamps:[],echoLimit:def.echo,dark:!!def.dark,ch4t:0,
+    receivers:[],platforms:[],lamps:[],machines:[],
+    echoLimit:def.echo,dark:!!def.dark,ch4t:0,
     beacon:null,beaconHold:0,beaconLock:false,beaconDiff:0,
+    phRate:def.phantoms||0,phTimer:260,
     spawn:{x:32,y:32},exit:null,coilsGot:0,totalCoils:0};
   for(let x=0;x<W;x++){let y=0;
     while(y<H){const ch=grid[y][x];
@@ -998,6 +1181,7 @@ function loadLevel(i){
     else if(ch==='@')L.noise.push({x:x,y:y});
     else if(ch==='R')L.receivers.push({x:x,y:y,on:false,text:null,shown:0,
       printing:false,tag:null,lore:null,voice:null,voiceBuf:null,tryPlay:0});
+    else if(ch==='M')L.machines.push({x:x,y:y});
     else if(ch==='P')L.spawn={x:x*TS+4,y:y*TS+TS-P_H};
     else if(ch==='F')L.exit={x:x,y:y};
     else if(ch==='*')L.platforms.push({cx:x,cy:y,w:TS*3,h:8,ph:hash(x,y)*6.28,
@@ -1019,9 +1203,10 @@ function loadLevel(i){
   }
   G.lvl=L;G.echoes=[];G.parts=[];G.lt=0;G.winT=0;G.msgT=0;G.msg=null;G.paused=false;
   G.player={x:L.spawn.x,y:L.spawn.y,vx:0,vy:0,face:1,ground:false,coyote:0,jbuf:0,
-    animT:0,onPlat:null,dead:false,deadT:0,stepT:0,w:P_W,h:P_H};
+    animT:0,onPlat:null,dead:false,deadT:0,stepT:0,hitT:0,w:P_W,h:P_H};
   G.rec={active:false,frames:[],tick:0,beep:0,maxLen:REC_BASE};
   G.cam={x:clamp(L.spawn.x-VW/2,0,Math.max(0,L.W*TS-VW)),y:camY(L.spawn.y)};
+  G.phantoms=[];
   if(def.beacon){
     const base=(SENS.hasOrient?SENS.alpha:G.course)||0;
     L.beacon={target:(base+90+Math.random()*180)%360};
@@ -1059,7 +1244,8 @@ function solidT(tx,ty){const L=G.lvl;
   if(ty<0)return '#';
   if(ty>=L.H)return '.';
   if(L.fakes&&L.fakes[tx+','+ty])return '.';
-  return L.grid[ty][tx]==='#'?'#':'.';}
+  const c=L.grid[ty][tx];
+  return (c==='#'||c==='M')?'#':'.';}
 
 const overlap=function(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;};
 function doorRect(d){const full=(d.y1-d.y0+1)*TS,h=full*(1-d.open);
@@ -1084,7 +1270,7 @@ function tileCollide(e){
   if(e.vy>0){const ty=Math.floor((e.y+e.h)/TS);
     for(let tx=x0;tx<=x1;tx++){
       const g=(ty>=0&&ty<L.H)?L.grid[ty][tx]:null;
-      if(solidT(tx,ty)==='#'||(prevB<=ty*TS+0.01&&g==='=')){
+      if(solidT(tx,ty)==='#'||(prevB<=ty*TS+0.01&&(g==='='||g==='T'))){
         e.y=ty*TS-e.h; e.vy=0; e.ground=!G.flipG; break; }}}
   else if(e.vy<0){const ty=Math.floor(e.y/TS);
     for(let tx=x0;tx<=x1;tx++)if(solidT(tx,ty)==='#'){
@@ -1175,6 +1361,85 @@ function burst(x,y,c,n){
   for(let i=0;i<n;i++){const a=Math.random()*6.28,v=.5+Math.random()*1.5;
     G.parts.push({x:x,y:y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.4,life:20+Math.random()*25,c:c,s:Math.random()<.4?2:1,g:.03});}}
 
+// ---------- красные фантомы ----------
+function stepPhantoms(){
+  const L=G.lvl,P=G.player;
+  if(P.hitT>0)P.hitT--;
+  if(!L.phRate||P.dead||G.winT)return;
+  const phMax=[0,2,3,4][L.phRate];
+  const phInt=[0,300,210,140][L.phRate];
+  if(G.phantoms.length<phMax){
+    L.phTimer--;
+    if(L.phTimer<=0){
+      L.phTimer=phInt+((Math.random()*90)|0);
+      for(let tries=0;tries<24;tries++){
+        const dx=(6+Math.random()*6)*(Math.random()<.5?-1:1);
+        const tx=Math.floor((P.x+4)/TS)+Math.round(dx);
+        const ty=Math.floor((P.y+P_H)/TS);
+        if(tx>1&&tx<L.W-2&&ty>0&&ty<L.H-1&&
+           L.grid[ty][tx]==='.'&&solidT(tx,ty+1)==='#'){
+          G.phantoms.push({x:tx*TS+4,y:ty*TS+TS-P_H,t:0,
+            phase:'warn',life:260+Math.random()*160,w:P_W,h:P_H,face:1});
+          SFX.phantom();
+          break;
+        }
+      }
+    }
+  }
+  for(const f of G.phantoms){
+    f.t++;
+    if(f.phase==='warn'){
+      if(f.t>36){f.phase='live';f.t=0;}
+      continue;
+    }
+    if(f.phase==='live'){
+      const dx=(P.x+4)-(f.x+4),dy=(P.y+6)-(f.y+6);
+      const d=Math.hypot(dx,dy)||1;
+      f.x+=dx/d*.58; f.y+=dy/d*.34;
+      f.face=(dx>0)?1:-1;
+      f.x=clamp(f.x,TS,(L.W-2)*TS);
+      f.y=clamp(f.y,TS,(L.H-1)*TS-P_H);
+      if(P.hitT<=0&&overlap({x:f.x,y:f.y,w:P_W,h:P_H},{x:P.x,y:P.y,w:P_W,h:P_H})){
+        P.hitT=PH_HIT_WINDOW;
+        P.vx=Math.sign((P.x+4)-(f.x+4)||1)*4.4; P.vy=-2.8;
+        G.glitch=Math.max(G.glitch,30);G.shake=4;
+        SFX.phantomHit();
+        msg('КОНТАКТ С КРАСНОЙ ЗАПИСЬЮ · НЕ КАСАЙСЯ БОЛЬШЕ',90);
+      }
+      if(f.t>f.life){f.phase='gone';f.t=0;SFX.tapeStop();}
+    } else if(f.phase==='gone'){
+      if(f.t>18)f.dead=true;
+    }
+  }
+  G.phantoms=G.phantoms.filter(function(f){return !f.dead;});
+  // второе касание в окно опасности = смерть
+  if(P.hitT>0&&!P.dead&&!G.winT){
+    for(const f of G.phantoms){
+      if(f.phase==='live'&&overlap({x:f.x,y:f.y,w:P_W,h:P_H},{x:P.x,y:P.y,w:P_W,h:P_H})){
+        killPlayer();return;
+      }
+    }
+  }
+}
+function drawPhantoms(){
+  for(const f of G.phantoms){
+    let al=0,x=f.x,y=f.y;
+    if(f.phase==='warn'){
+      al=.12+.1*Math.abs(Math.sin(f.t*.4));
+    } else if(f.phase==='live'){
+      al=.55+.25*Math.sin(f.t*.5);
+      if(f.t%13<2){x+=(Math.random()-.5)*3;y+=(Math.random()-.5)*2;}
+    } else {
+      al=Math.max(0,1-f.t/18)*.6; y-=f.t*.25;
+    }
+    drawDude(ctx,x,y,'runA',f.face,PAL_R,al);
+    if(f.phase==='live'&&G.t%9<2){
+      ctx.fillStyle='rgba(255,60,40,.2)';
+      ctx.fillRect(x-2,y+((Math.random()*13)|0),P_W+4,1);
+    }
+  }
+}
+
 // ---------- главный шаг ----------
 function step(){
   G.t++;
@@ -1188,8 +1453,6 @@ function step(){
         G.state=(G.lvl&&G.lvl.def.beacon)?'sensor':'play';
     }
   }
-  // ФИКС: в редакторе чистим буфер нажатий — иначе «ТЕСТ»
-  // срабатывал на осевшую клавишу T и выкидывал обратно
   if(G.state==='editor'){JP.clear();return;}
   if(G.state==='play'){
     if(G.paused){
@@ -1238,7 +1501,7 @@ function step(){
 function stepPlay(){
   const L=G.lvl,P=G.player;
   if(P.dead){ P.deadT++;
-    if(P.deadT>80){P.dead=false;P.x=L.spawn.x;P.y=L.spawn.y;P.vx=0;P.vy=0;
+    if(P.deadT>80){P.dead=false;P.x=L.spawn.x;P.y=L.spawn.y;P.vx=0;P.vy=0;P.hitT=0;
       G.cam.x=clamp(P.x-VW/2,0,Math.max(0,L.W*TS-VW));
       G.cam.y=camY(P.y);}
     return; }
@@ -1277,7 +1540,6 @@ function stepPlay(){
   if(JP.has('E')){ if(!G.rec.active)startRec(); else stopRec(false); }
   if(JP.has('Q'))clearEchoes();
   if(JP.has('RS')){loadLevel(G.lvlIdx);msg('СЕКТОР ПЕРЕЗАПУЩЕН',120);return;}
-  // ФИКС 2: M глушит теперь и гудел приёмника
   if(JP.has('M')){SFX.on=!SFX.on;SFX.setAmbMute(!SFX.on);SFX.setBuzzMute(!SFX.on);
     msg(SFX.on?'ЗВУК: ВКЛ':'ЗВУК: ВЫКЛ',90);}
   if(JP.has('K')){
@@ -1296,7 +1558,6 @@ function stepPlay(){
     if(G.rec.beep>(warn?18:45)){G.rec.beep=0;SFX.recBeep();}
     if(entNoise(P.x,P.y,P_W,P_H)){msg('ПОМЕХИ: ЗАПИСЬ СОРВАНА',130);stopRec(true);}
   }
-  // ---- каналы плит/шлюзов ----
   const ch=[false,false,false,false,false];
   for(const pl of L.plates){
     pl.wasP=pl.press; pl.press=0;
@@ -1311,7 +1572,6 @@ function stepPlay(){
     if(pl.ch!==4&&pl.press)ch[pl.ch-1]=true;
   }
   if(L.ch4t>0){L.ch4t--;ch[3]=true;}
-  // ---- ПЕЛЕНГ (шлюз-5) ----
   if(L.beacon){
     if(SENS.hasOrient){
       G.course=(SENS.alpha+360)%360;
@@ -1353,7 +1613,9 @@ function stepPlay(){
     if((d.open>0.02)!==(d.prevOpen>0.02))SFX.door(d.open>0.02);
   }
   stepEchoes();
-  // ---- приёмники УВБ-76 (гудел управляется глобально) ----
+  stepPhantoms();
+  if(P.dead)return;
+  // ---- приёмники УВБ-76 ----
   let anyRec=false;
   for(const r of L.receivers){
     const rx=r.x*TS+8,ry=r.y*TS+8;
@@ -1361,8 +1623,6 @@ function stepPlay(){
     if(near&&!r.on){
       r.on=true;
       const rec=pickBroadcast();
-      // в ЗЕРКАЛЕ плёнка проявлена с обратной стороны:
-      // шифровка печатается задом наперёд
       r.text=G.mirror?rec.t.split('').reverse().join(''):rec.t;
       r.tag=rec.tag;r.lore=UVB_LORE[rec.tag]||null;
       r.voice=rec.voice||null;r.voiceBuf=null;
@@ -1385,7 +1645,6 @@ function stepPlay(){
       if(r.voiceBuf){playVoiceBuf(r.voiceBuf);r.tryPlay=0;}
     }
   }
-  // ФИКС 3: гудел жив, пока игрок у ХОТЯ БЫ одного приёмника
   if(anyRec)SFX.startBuzz(); else SFX.stopBuzz();
   // ---- микрофон: сектор слышит ----
   if(MIC.granted&&MIC.enabled){
@@ -1450,7 +1709,7 @@ function stepPlay(){
 }
 function killPlayer(){const P=G.player;
   if(P.dead||G.winT)return;
-  P.dead=true;P.deadT=0;G.deaths++;G.glitch=50;G.shake=5;SFX.death();
+  P.dead=true;P.deadT=0;P.hitT=0;G.deaths++;G.glitch=50;G.shake=5;SFX.death();
   SFX.stopBuzz();
   if(G.rec.active)stopRec(true);
   for(const e of G.echoes)if(!e.dieT){e.dieT=1;burst(e.x+4,e.y+6,'#7df3e8',14);}
@@ -1651,7 +1910,6 @@ function afterWipe(){
       G.save.paths[i]=p;
     }
   }
-  // ---- кастомная кампания: всё решает граф ----
   if(G.custom){
     if(G.warpTo!=null){
       G.retIdx=null;
@@ -1672,7 +1930,6 @@ function afterWipe(){
     }
     return;
   }
-  // ---- встроенная кампания ----
   if(G.warpTo!=null){
     G.retIdx=(G.retIdx==null)?0:G.retIdx;
     G.lvlIdx=G.warpTo;
@@ -1731,33 +1988,77 @@ function buildCache(){
   const L=G.lvl; if(!L)return;
   lcv.width=L.W*TS; lcv.height=L.H*TS;
   const g=lctx;
+  const lab=!!L.def.lab;
   g.clearRect(0,0,lcv.width,lcv.height);
   for(let y=0;y<L.H;y++)for(let x=0;x<L.W;x++){
     const ch=L.grid[y][x],px=x*TS,py=y*TS;
     if(ch==='#'){
       const openTop=y>0?L.grid[y-1][x]!=='#':true;
       if(openTop){
-        g.fillStyle='#6f8b86'; g.fillRect(px,py,TS,TS);
-        g.fillStyle='#799691';
-        g.fillRect(px+1,py+1,6,6); g.fillRect(px+9,py+1,6,6);
-        g.fillRect(px+1,py+9,6,6); g.fillRect(px+9,py+9,6,6);
-        g.fillStyle='#546d69'; g.fillRect(px+7,py,1,TS); g.fillRect(px,py+7,TS,1);
-        g.fillStyle='#93b0aa'; g.fillRect(px,py,TS,2);
-        if(hash(x,y)>.6){g.fillStyle='#5c736f';
-          g.fillRect(px+((hash(x,y*3)*10)|0)+2,py+((hash(x*3,y)*10)|0)+2,3,2);}
-        if(hash(x*2,y)>.87)for(let i=0;i<4;i++){
-          g.fillStyle=i%2?'#c9a13b':'#2c2c28';g.fillRect(px+i*4,py,4,3);}
+        if(lab){
+          // архив ЭВМ: мелкий кафель 4×4
+          g.fillStyle='#8fa39b'; g.fillRect(px,py,TS,TS);
+          for(let ty=0;ty<4;ty++)for(let tx=0;tx<4;tx++){
+            g.fillStyle=((tx+ty)&1)?'#93a8a0':'#87a098';
+            g.fillRect(px+tx*4,py+ty*4,4,4);
+          }
+          g.fillStyle='rgba(235,245,242,.5)'; g.fillRect(px,py,TS,1);
+          g.fillStyle='rgba(40,60,56,.35)'; g.fillRect(px,py+TS-1,TS,1);
+          if(hash(x,y)>.7){g.fillStyle='#7a938b';
+            g.fillRect(px+((hash(x,y*3)*12)|0)+2,py+((hash(x*3,y)*12)|0)+2,3,2);}
+        } else {
+          g.fillStyle='#6f8b86'; g.fillRect(px,py,TS,TS);
+          g.fillStyle='#799691';
+          g.fillRect(px+1,py+1,6,6); g.fillRect(px+9,py+1,6,6);
+          g.fillRect(px+1,py+9,6,6); g.fillRect(px+9,py+9,6,6);
+          g.fillStyle='#546d69'; g.fillRect(px+7,py,1,TS); g.fillRect(px,py+7,TS,1);
+          g.fillStyle='#93b0aa'; g.fillRect(px,py,TS,2);
+          if(hash(x,y)>.6){g.fillStyle='#5c736f';
+            g.fillRect(px+((hash(x,y*3)*10)|0)+2,py+((hash(x*3,y)*10)|0)+2,3,2);}
+          if(hash(x*2,y)>.87)for(let i=0;i<4;i++){
+            g.fillStyle=i%2?'#c9a13b':'#2c2c28';g.fillRect(px+i*4,py,4,3);}
+        }
       } else {
-        g.fillStyle='#4c4a45'; g.fillRect(px,py,TS,TS);
-        for(let i=0;i<5;i++){const h1=hash(x*31+i,y*17+i);
-          g.fillStyle=h1>.5?'#54524c':'#44423d';
-          g.fillRect(px+((h1*13)|0),py+((hash(x+i,y*7+i)*13)|0),2,2);}
-        if(y+1>=L.H||L.grid[y+1][x]!=='#'){g.fillStyle='#33322e';g.fillRect(px,py+TS-2,TS,2);
-          if(hash(x,y*5)>.7){g.fillStyle='#3a3833';g.fillRect(px+6,py+TS-2,2,4);}}
-        if(x>0&&L.grid[y][x-1]!=='#'){g.fillStyle='#5a5852';g.fillRect(px,py,2,TS);}
-        if(x+1<L.W&&L.grid[y][x+1]!=='#'){g.fillStyle='#3b3a36';g.fillRect(px+TS-2,py,2,TS);}
-        if(hash(x*7,y*3)>.94){g.fillStyle='rgba(107,138,96,.5)';g.fillRect(px+2,py+9,12,4);}
+        if(lab){
+          // панели с заклёпками
+          g.fillStyle='#3f4a52'; g.fillRect(px,py,TS,TS);
+          g.fillStyle='#46525a'; g.fillRect(px,py,TS,1);
+          g.fillStyle='#343e45'; g.fillRect(px,py+8,TS,1);
+          if((x+y)&1){g.fillStyle='#425058';g.fillRect(px,py,TS,8);}
+          g.fillStyle='#2c343a';
+          g.fillRect(px+2,py+3,1,1);g.fillRect(px+13,py+3,1,1);
+          g.fillRect(px+2,py+12,1,1);g.fillRect(px+13,py+12,1,1);
+          if(hash(x*7,y*3)>.9){g.fillStyle='rgba(122,138,96,.35)';g.fillRect(px+3,py+10,10,3);}
+        } else {
+          g.fillStyle='#4c4a45'; g.fillRect(px,py,TS,TS);
+          for(let i=0;i<5;i++){const h1=hash(x*31+i,y*17+i);
+            g.fillStyle=h1>.5?'#54524c':'#44423d';
+            g.fillRect(px+((h1*13)|0),py+((hash(x+i,y*7+i)*13)|0),2,2);}
+          if(y+1>=L.H||L.grid[y+1][x]!=='#'){g.fillStyle='#33322e';g.fillRect(px,py+TS-2,TS,2);
+            if(hash(x,y*5)>.7){g.fillStyle='#3a3833';g.fillRect(px+6,py+TS-2,2,4);}}
+          if(x>0&&L.grid[y][x-1]!=='#'){g.fillStyle='#5a5852';g.fillRect(px,py,2,TS);}
+          if(x+1<L.W&&L.grid[y][x+1]!=='#'){g.fillStyle='#3b3a36';g.fillRect(px+TS-2,py,2,TS);}
+          if(hash(x*7,y*3)>.94){g.fillStyle='rgba(107,138,96,.5)';g.fillRect(px+2,py+9,12,4);}
+        }
       }
+    } else if(ch==='M'){
+      // шкаф ЭВМ: корпус, решётка, перфолента
+      g.fillStyle='#2c3a35'; g.fillRect(px,py,TS,TS);
+      g.fillStyle='#1d2823'; g.fillRect(px+1,py+1,TS-2,TS-2);
+      g.fillStyle='#3a4a44';
+      g.fillRect(px+1,py,TS-2,2);
+      g.fillStyle='#141b18';
+      for(let i=0;i<3;i++)g.fillRect(px+3,py+5+i*3,10,1);
+      g.fillStyle='#c8c4b2'; g.fillRect(px+2,py+13,12,2);
+      g.fillStyle='#1d2823';
+      for(let i=0;i<6;i++)g.fillRect(px+3+i*2,py+13,1,2);
+    } else if(ch==='T'){
+      // стол: столешница + ножки (платформа, коллизия сверху)
+      g.fillStyle='#b9ae93'; g.fillRect(px,py+1,TS,3);
+      g.fillStyle='#d1c7ad'; g.fillRect(px,py+1,TS,1);
+      g.fillStyle='#6d5f4a';
+      g.fillRect(px+2,py+4,2,TS-4); g.fillRect(px+12,py+4,2,TS-4);
+      g.fillStyle='#584c3a'; g.fillRect(px+2,py+TS-2,2,2); g.fillRect(px+12,py+TS-2,2,2);
     } else if(ch==='='){
       g.fillStyle='#6d747c'; g.fillRect(px,py,TS,5);
       g.fillStyle='#494f55';
@@ -1847,9 +2148,11 @@ function renderWorld(){
   ctx.translate(-Math.round(camX),-Math.round(camYv));
   if(G.film)drawFilm();
   ctx.drawImage(lcv,0,0);
+  drawMachines(L);
   drawAcid(L);drawNoise(L);drawDoors(L);drawPlates(L);drawExit(L);
   drawPlatforms(L);drawCoils(L);drawReceivers(L);
   for(const e of G.echoes)drawEcho(e);
+  drawPhantoms();
   drawClones();
   drawWatch();
   const P=G.player;
@@ -1858,6 +2161,8 @@ function renderWorld(){
     drawDude(ctx,P.x,P.y,fr,P.face,G.palPlayer,1);
     if(G.rec.active){ctx.strokeStyle='rgba(125,243,232,.55)';
       ctx.strokeRect(P.x-3.5,P.y-3.5,P_W+7,P_H+7);}
+    if(P.hitT>0){ctx.strokeStyle='rgba(255,60,40,.7)';
+      ctx.strokeRect(P.x-4.5,P.y-4.5,P_W+9,P_H+9);}
   }
   for(const p of G.parts){
     if(p.c==='dust')continue;
@@ -1867,6 +2172,12 @@ function renderWorld(){
   ctx.restore();
   drawLight(camX,camYv);
   renderDust(camX,camYv);
+  if(P&&P.hitT>0&&!P.dead){
+    const k=P.hitT/PH_HIT_WINDOW;
+    ctx.fillStyle='rgba(255,40,30,'+(0.22*k).toFixed(3)+')';
+    ctx.fillRect(0,0,VW,6);ctx.fillRect(0,VH-6,VW,6);
+    ctx.fillRect(0,0,6,VH);ctx.fillRect(VW-6,0,6,VH);
+  }
   if(G.glitch>0&&G.player.dead){
     for(let i=0;i<4;i++){
       const sy=Math.random()*VH,h2=2+Math.random()*8,off=(Math.random()-.5)*24;
@@ -1878,6 +2189,17 @@ function renderWorld(){
     ctx.fillRect(0,0,VW,8);ctx.fillRect(0,VH-8,VW,8);
     const sy=(G.t*3)%VH;
     ctx.fillStyle='rgba(125,243,232,.06)'; ctx.fillRect(0,sy,VW,10);}
+}
+function drawMachines(L){
+  if(!L.machines||!L.machines.length)return;
+  for(const mc of L.machines){
+    const px=mc.x*TS,py=mc.y*TS;
+    for(let r=0;r<3;r++){
+      const on=hash(mc.x*13+r,mc.y*7+((G.t>>4)+r*3))>.45;
+      ctx.fillStyle=on?(r===2?'#ff5545':'#7dffb0'):'#3a1010';
+      ctx.fillRect(px+3+r*4,py+2,2,2);
+    }
+  }
 }
 function drawFan(x,y){
   ctx.save();ctx.translate(x,y);
@@ -2049,9 +2371,11 @@ function drawLight(camX,camYv){
     cut(lp.x,lp.y+6,lp.red?42:70*fl,lp.red?.8:.95);}
   const P=G.player;
   if(P&&!P.dead)cut(P.x+4,P.y+6,L.dark?54:62,.95);
+  for(const f of G.phantoms)if(f.phase==='live')cut(f.x+4,f.y+6,34,.85);
   for(const e of G.echoes)if(!e.dieT)cut(e.x+4,e.y+6,40,.9);
   if(G.watch&&G.watch.active)cut(G.watch.x+4,G.watch.y+6,46,.9);
   for(const c of L.coils)if(!c.taken)cut(c.x*TS+8,c.y*TS+8,24,.8);
+  for(const mc of L.machines)cut(mc.x*TS+8,mc.y*TS+8,20,.6);
   for(const r of L.receivers)cut(r.x*TS+8,r.y*TS+6,22,.75);
   for(const pl of L.plates)cut(pl.x*TS+8,pl.y*TS+10,20,.7);
   for(const d of L.doors)cut(d.x*TS+8,d.y0*TS-6,18,.7);
@@ -2074,6 +2398,10 @@ function drawLight(camX,camYv){
     ctx.fillStyle='#2c3136';
     ctx.fillRect(lp.x-camX-4,lp.y-camYv-2,8,3);}
   for(const c of L.coils)if(!c.taken)glow(c.x*TS+8,c.y*TS+8,14,'rgba(255,200,90,.22)');
+  for(const mc of L.machines)
+    glow(mc.x*TS+8,mc.y*TS+2,12,'rgba(125,255,176,.1)');
+  for(const f of G.phantoms)if(f.phase==='live')
+    glow(f.x+4,f.y+6,16,'rgba(255,60,40,.14)');
   for(const r of L.receivers)glow(r.x*TS+8,r.y*TS+6,14,'rgba(120,190,255,.18)');
   for(const e of G.echoes)if(!e.dieT)glow(e.x+4,e.y+6,16,'rgba(110,240,230,.15)');
   if(L.exit)glow(L.exit.x*TS+8,L.exit.y*TS,18,'rgba(120,240,140,.2)');
@@ -2144,6 +2472,10 @@ function renderHUD(){
   uctx.font='8px "IBM Plex Mono",monospace';
   uctx.fillStyle=(MIC.granted&&MIC.enabled)?'rgba(125,243,232,.7)':'rgba(200,205,200,.25)';
   uctx.fillText('МИК',W-96,34);
+  if(G.player&&G.player.hitT>0&&(G.t>>2)%2){
+    uctx.fillStyle='#ff4b3e';
+    uctx.fillText('КОНТАКТ',W-96,46);
+  }
   if(G.custom){
     uctx.fillStyle='rgba(140,210,255,.6)';
     uctx.fillText('ТЕСТ',W-40,34);
@@ -2233,15 +2565,16 @@ function renderHUD(){
     uctx.fillStyle='rgba(2,4,6,.78)'; uctx.fillRect(0,0,W,H);
     uctx.textAlign='center';
     uctx.font='15px "Pixelify Sans",monospace';uctx.fillStyle=AMBER;
-    uctx.fillText('НАБЛЮДЕНИЕ ПРИОСТАНОВЛЕНО',W/2,H/2-64);
+    uctx.fillText('НАБЛЮДЕНИЕ ПРИОСТАНОВЛЕНО',W/2,H/2-74);
     uctx.font='10px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(220,215,205,.8)';
     const lines=['E — запись эхо · Q — стереть эхо · R — перезапуск сектора',
       'катушка = +5 сек плёнки · эхо живёт ровно по записи',
       'K — микрофон: '+(MIC.granted?(MIC.enabled?'СЛУШАЕТ':'ВЫКЛ'):'НЕТ')+' · на тёмных этажах сидите тише',
+      'красные записи: 1-е касание — отброс · 2-е — конец плёнки',
       'M — звук · ESC — продолжить'
         +(G.custom?' · T — ВЕРНУТЬСЯ В РЕДАКТОР':''),
       '','СМЕРТЕЙ ЗА СЕССИЮ: '+G.deaths];
-    for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],W/2,H/2-30+i*17);
+    for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],W/2,H/2-38+i*17);
     uctx.textAlign='left';
   }
 }
@@ -2314,7 +2647,7 @@ function renderTitle(){
       :'[ ENTER ] НАЧАТЬ НАБЛЮДЕНИЕ',W/2,270);
   }
   uctx.font='8px "IBM Plex Mono",monospace';uctx.fillStyle='rgba(200,205,200,.4)';
-  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись · Q — стереть · Z/X — пеленг · K — микрофон · T — РЕДАКТОР · сборка 16-E',W/2,H-6);
+  uctx.fillText('A/D — движение · SPACE — прыжок · E — запись · Q — стереть · Z/X — пеленг · K — микрофон · T — РЕДАКТОР · сборка 17-E',W/2,H-6);
   uctx.textAlign='left';
 }
 function renderBrief(){
@@ -2333,7 +2666,8 @@ function renderBrief(){
   const lines=wrap(noteText,52);
   for(let i=0;i<lines.length;i++)uctx.fillText(lines[i],40,112+i*15);
   uctx.fillStyle=CYAN;
-  uctx.fillText('ЦЕЛЬ: достичь выхода. каналов эхо: '+d.echo,40,112+lines.length*15+14);
+  uctx.fillText('ЦЕЛЬ: достичь выхода. каналов эхо: '+d.echo
+    +((d.phantoms||0)?' · КРАСНЫХ ЗАПИСЕЙ: '+d.phantoms:''),40,112+lines.length*15+14);
   if(G.custom){
     uctx.fillStyle='rgba(140,210,255,.6)';
     uctx.fillText('ТЕСТ КАМПАНИИ · T — ВЕРНУТЬСЯ В РЕДАКТОР',40,112+lines.length*15+32);
@@ -2383,8 +2717,7 @@ function renderFinal(){
 }
 
 // ============================================================
-//  РЕДАКТОР УРОВНЕЙ (HERE-BEGIN … HERE-END — удаляется одним
-//  блоком при выпуске «чистой» версии)
+//  РЕДАКТОР УРОВНЕЙ (HERE-BEGIN … HERE-END)
 // ============================================================
 const ED={c:null,cur:0,mode:'graph',linkType:'next',linkFrom:null,
   sel:-1,drag:null,pan:{x:30,y:20},tile:'#',mouse:null,palBuilt:false};
@@ -2396,14 +2729,15 @@ const TILE_DEFS=[
   ['3','ПЛИТА-3'],['4','ПЛИТА-4 импульс'],['A','ШЛЮЗ-1'],['B','ШЛЮЗ-2'],
   ['C','ШЛЮЗ-3'],['D','ШЛЮЗ-4'],['E','ШЛЮЗ-5 пеленг'],['P','СТАРТ'],
   ['F','ВЫХОД'],['*','ЛИФТ'],['R','ПРИЁМНИК УВБ'],
+  ['M','ШКАФ ЭВМ (стена)'],['T','СТОЛ (платформа)'],
   ['W','ВАРП-СТЕНА (скрытый проход)'],['V','ВАРП-КИСЛОТА (нырок)']];
 
 function stubLevel(px,py){
   const W=40,H=12,m=mkGrid(H,W);border(m);
   m[H-2][2]='P';m[H-2][W-3]='F';
   return {name:'НОВЫЙ СЕКТОР',sub:'СЕКТОР Н-'+pad((ED.c?ED.c.levels.length+1:1),2),
-    date:'--.--.----',echo:1,dark:false,hint:'СВОЙ СЕКТОР',
-    note:'Протокол наблюдения: данных нет.',
+    date:'--.--.----',echo:1,dark:false,phantoms:0,
+    hint:'СВОЙ СЕКТОР',note:'Протокол наблюдения: данных нет.',
     map:join(m),x:px,y:py};
 }
 function defaultCampaign(){
@@ -2423,8 +2757,6 @@ function saveCustomCampaign(){
     edStatus('СОХРАНЕНО В БРАУЗЕР: '+ED.c.levels.length+' СЕКТОРОВ');}
   catch(e){edStatus('ОШИБКА СОХРАНЕНИЯ');}
 }
-// встроенная иерархия как редактируемая копия (со спец-флагами:
-// пеленг/потолок/коридор/зеркало/размножение переносятся в тест)
 function builtinCampaign(){
   const lv=[];
   for(let i=0;i<LEVELS.length;i++){
@@ -2437,6 +2769,7 @@ function builtinCampaign(){
       hint:L.hint,note:L.note,map:map,
       beacon:!!L.beacon,flip:!!L.flip,mirror:!!L.mirror,
       endless:!!L.endless,clones:L.clones||0,
+      lab:!!L.lab,phantoms:L.phantoms||0,
       x:60+(i%6)*180,y:40+((i/6)|0)*130});
   }
   const links=[];
@@ -2446,7 +2779,6 @@ function builtinCampaign(){
   });
   return {name:'ВСТРОЕННАЯ ИЕРАРХИЯ (копия)',levels:lv,links:links};
 }
-// карта редактора → игровой формат
 function buildTestable(){
   const levels=[];
   for(let idx=0;idx<ED.c.levels.length;idx++){
@@ -2469,6 +2801,7 @@ function buildTestable(){
       echo:(src.echo|0),dark:!!src.dark,hint:src.hint,note:src.note,
       beacon:!!src.beacon,flip:!!src.flip,mirror:!!src.mirror,
       endless:!!src.endless,clones:src.clones||0,
+      lab:!!src.lab,phantoms:(src.phantoms|0),
       map:map,warps:warps});
   }
   return {levels:levels,links:ED.c.links.map(function(l){return {from:l.from,to:l.to,type:l.type};})};
@@ -2509,7 +2842,7 @@ function openEditor(){
   edStatus('УРОВНЕЙ: '+ED.c.levels.length+' · СВЯЗЕЙ: '+ED.c.links.length);
 }
 function exitToEditor(){
-  SFX.stopBuzz();               // ФИКС: гудел не тянется в редактор
+  SFX.stopBuzz();
   G.custom=null;
   G.state='editor';
   G.paused=false;
@@ -2578,11 +2911,11 @@ document.getElementById('ebLinkWarp').onclick=function(){
   document.getElementById('ebLinkNext').classList.remove('sel');
 };
 document.getElementById('ebBuiltin').onclick=function(){
-  if(!confirm('Заменить текущую кампанию копией встроенной иерархии (20 секторов)?'))
+  if(!confirm('Заменить текущую кампанию копией встроенной иерархии (30 секторов)?'))
     return;
   ED.c=builtinCampaign();
   ED.cur=0;ED.sel=-1;ED.pan={x:20,y:20};
-  edStatus('ЗАГРУЖЕНА ВСТРОЕННАЯ ИЕРАРХИЯ: 20 СЕКТОРОВ');
+  edStatus('ЗАГРУЖЕНА ВСТРОЕННАЯ ИЕРАРХИЯ: '+ED.c.levels.length+' СЕКТОРОВ');
   drawGraph();
 };
 document.getElementById('ebTest').onclick=startTest;
@@ -2595,6 +2928,8 @@ function fillProps(){
   document.getElementById('ep-date').value=L.date;
   document.getElementById('ep-echo').value=L.echo;
   document.getElementById('ep-dark').checked=!!L.dark;
+  document.getElementById('ep-lab').checked=!!L.lab;
+  document.getElementById('ep-phantoms').value=L.phantoms||0;
   document.getElementById('ep-hint').value=L.hint||'';
   document.getElementById('ep-note').value=L.note||'';
   document.getElementById('ep-w').value=L.map[0].length;
@@ -2607,6 +2942,8 @@ document.getElementById('ep-save').onclick=function(){
   L.date=document.getElementById('ep-date').value||'--.--.----';
   L.echo=clamp(parseInt(document.getElementById('ep-echo').value)||0,0,3);
   L.dark=!!document.getElementById('ep-dark').checked;
+  L.lab=!!document.getElementById('ep-lab').checked;
+  L.phantoms=clamp(parseInt(document.getElementById('ep-phantoms').value)||0,0,3);
   L.hint=document.getElementById('ep-hint').value;
   L.note=document.getElementById('ep-note').value;
   edStatus('СВОЙСТВА ПРИМЕНЕНЫ · СЕКТОР №'+(ED.cur+1));
@@ -2691,7 +3028,7 @@ function linkBezier(l){
 function hitLink(mx,my){
   for(let i=0;i<ED.c.links.length;i++){
     const L=ED.c.links[i];
-    if(L.from==null||L.to==null)continue;   // ФИКС: было l.from — падало
+    if(L.from==null||L.to==null)continue;
     const B=linkBezier(L);
     for(let t=0;t<=1;t+=.05){
       const bx=bez(B.x1,B.cx1,B.cx2,B.x2,t),by=bez(B.y1,B.cy1,B.cy2,B.y2,t);
@@ -2743,9 +3080,9 @@ function drawGraph(){
     g.strokeStyle=sel?'#7df3e8':(i===ED.cur?'#c9a13b':'#333a41');
     g.lineWidth=sel?1.6:1;
     g.strokeRect(r.x+.5,r.y+.5,r.w-1,r.h-1);
-    g.fillStyle=L.dark?'#20303c':'#2c343c';
+    g.fillStyle=L.lab?'#2e4038':(L.dark?'#20303c':'#2c343c');
     g.fillRect(r.x+1,r.y+1,r.w-2,13);
-    g.fillStyle=L.dark?'#8fd6ff':'#d8d2c2';
+    g.fillStyle=L.lab?'#8fe0c0':(L.dark?'#8fd6ff':'#d8d2c2');
     g.font='9px "IBM Plex Mono",monospace';
     g.fillText('#'+pad(i+1,2),r.x+5,r.y+10);
     g.fillStyle='#c8c8c0';
@@ -2753,7 +3090,8 @@ function drawGraph(){
     g.fillStyle='#6a7580';
     g.fillText((L.sub||'').slice(0,28),r.x+5,r.y+38);
     g.fillStyle='#7df3e8';
-    g.fillText('Э'+(L.echo|0),r.x+r.w-18,r.y+10);
+    g.fillText('Э'+(L.echo|0),r.x+r.w-40,r.y+10);
+    if(L.phantoms){g.fillStyle='#ff6a55';g.fillText('КР'+(L.phantoms|0),r.x+r.w-18,r.y+10);}
     g.fillStyle='#55606a';
     g.fillRect(r.x-3,r.y+r.h/2-3,6,6);
     g.fillRect(r.x+r.w-3,r.y+r.h/2-3,6,6);
@@ -2790,7 +3128,6 @@ gcv.addEventListener('mousedown',function(e){
   }
   if(ni>=0){
     ED.sel=ni;ED.cur=ni;
-    const r=nodeRect(ni);
     gDown={i:ni,dx:mx-(ED.c.levels[ni].x||0),dy:my-(ED.c.levels[ni].y||0)};
     edStatus('СЕКТОР №'+(ni+1)+' · 2× КЛИК — РЕДАКТОР КАРТЫ');
   } else {
@@ -2838,7 +3175,7 @@ function buildPalette(){
   });
   const h=document.createElement('div');
   h.style.cssText='margin-top:10px;color:#5c6a72;font-size:9px;line-height:1.7;letter-spacing:1px';
-  h.textContent='ЛКМ — рисовать · ПКМ — стирать. W/V: варп-проходы, цель задают ВАРП-связи узла (по порядку). P и F — по одному на карту. R — приёмник УВБ.';
+  h.textContent='ЛКМ — рисовать · ПКМ — стирать. W/V: варп-проходы, цель задают ВАРП-связи узла (по порядку). P и F — по одному на карту. R — приёмник УВБ. M — шкаф (стена), T — стол (платформа).';
   pal.appendChild(h);
 }
 function openMap(){
@@ -2853,7 +3190,7 @@ function tileColor(ch){
     '@':'#5a8fb0','o':'#ffcf7a','1':'#a8b0b8','2':'#a8b0b8','3':'#a8b0b8',
     '4':'#dcb43f','A':'#565d64','B':'#565d64','C':'#565d64','D':'#565d64',
     'E':'#565d64','P':'#d8a37a','F':'#78f08c','*':'#8b939b','R':'#8fd6ff',
-    'W':'#7df3e8','V':'#7df3e8'}[ch]||'#333';
+    'M':'#4a5a50','T':'#b9ae93','W':'#7df3e8','V':'#7df3e8'}[ch]||'#333';
 }
 function drawMapCanvas(){
   const L=ED.c.levels[ED.cur];if(!L)return;
@@ -2866,6 +3203,14 @@ function drawMapCanvas(){
     if(ch==='#'){
       mctx.fillStyle='#5a5f5a';mctx.fillRect(px,py,TS,TS);
       mctx.fillStyle='#444a44';mctx.fillRect(px,py,TS,1);
+    } else if(ch==='M'){
+      mctx.fillStyle='#2c3a35';mctx.fillRect(px,py,TS,TS);
+      mctx.fillStyle='#141b18';
+      for(let i=0;i<3;i++)mctx.fillRect(px+3,py+5+i*3,10,1);
+    } else if(ch==='T'){
+      mctx.fillStyle='#b9ae93';mctx.fillRect(px,py+1,TS,3);
+      mctx.fillStyle='#6d5f4a';
+      mctx.fillRect(px+2,py+4,2,TS-4);mctx.fillRect(px+12,py+4,2,TS-4);
     } else if(ch==='='){
       mctx.fillStyle='#6d747c';mctx.fillRect(px,py+4,TS,5);
       mctx.fillStyle='#3c4147';
